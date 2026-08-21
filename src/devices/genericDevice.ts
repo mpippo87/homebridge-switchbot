@@ -545,6 +545,17 @@ export class CurtainDevice extends GenericDevice {
               },
               refreshAfterSet: ['CurrentPosition', 'TargetPosition', 'PositionState'],
             },
+            HoldPosition: {
+              set: async () => {
+                await this.setState({
+                  command: 'pause',
+                  parameter: 'default',
+                  commandType: 'command',
+                })
+                this.positionState = 2
+              },
+              refreshAfterSet: ['PositionState'],
+            },
           },
         },
       ],
