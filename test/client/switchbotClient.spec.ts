@@ -61,4 +61,36 @@ describe('switchBotClient', () => {
     expect(out).toEqual(discovered)
     expect(discover).toHaveBeenCalledTimes(1)
   })
+
+  it('should attach node client connections to discovered roller shades and prefer OpenAPI', async () => {
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+    const client = new SwitchBotClient({ logger } as any)
+    const apiClient = { sendCommand: vi.fn() }
+    const bleConnection = { sendCommand: vi.fn() }
+    const setPreferredConnection = vi.fn()
+    const discovered = {
+      id: 'shade-1',
+      apiClient: undefined,
+      bleConnection: undefined,
+      getInfo: () => ({ deviceType: 'Roller Shade' }),
+      setPreferredConnection,
+    }
+    const discover = vi.fn().mockResolvedValue([discovered])
+    ;(client as any).client = {
+      apiClient,
+      bleConnection,
+      devices: {
+        list: () => [],
+        get: () => undefined,
+      },
+      discover,
+      getAPIClient: () => apiClient,
+    }
+
+    const out = await client.getDevice('shade-1')
+
+    expect(out.apiClient).toBe(apiClient)
+    expect(out.bleConnection).toBe(bleConnection)
+    expect(setPreferredConnection).toHaveBeenCalledWith('api')
+  })
 })

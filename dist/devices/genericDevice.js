@@ -462,30 +462,32 @@ export class CurtainDevice extends GenericDevice {
         return Date.now() < this.motionCommandUntil || this.positionState !== 2;
     }
     async pauseMotion() {
-        await this.setState({
+        const result = await this.setState({
             command: 'pause',
             parameter: 'default',
             commandType: 'command',
         });
         this.motionCommandUntil = 0;
         this.positionState = 2;
+        return result;
     }
     async moveOrPause(homeKitPosition) {
         if (this.isMotionCommandActive()) {
-            await this.pauseMotion();
-            return;
+            return await this.pauseMotion();
         }
+        await this.getPositionForHomeKit();
         const position = this.clampHomeKitPosition(homeKitPosition);
         this.lastTargetPosition = position;
         this.positionState = position > this.lastKnownPosition ? 1 : position < this.lastKnownPosition ? 0 : 2;
         if (this.positionState === 2) {
             this.motionCommandUntil = 0;
-            return;
+            return { success: true, reason: 'already_at_target', position };
         }
         this.motionCommandUntil = Date.now() + this.motionCommandWindowMs;
-        await this.setState({ position: this.toSwitchBotPosition(position) });
+        const result = await this.setState({ position: this.toSwitchBotPosition(position) });
         this.lastKnownPosition = position;
         this.preferLocalPositionUntil = Date.now() + 30000;
+        return result;
     }
     async getPositionForHomeKit() {
         if (Date.now() < this.preferLocalPositionUntil) {
@@ -553,7 +555,9 @@ export class CurtainDevice extends GenericDevice {
                                     get: async () => false,
                                     set: async (v) => {
                                         if (v) {
-                                            await this.moveOrPause(100);
+                                            this.log.info('[Blind Up] Command requested');
+                                            const result = await this.moveOrPause(100);
+                                            this.log.info('[Blind Up] Command result:', JSON.stringify(result));
                                         }
                                     },
                                     refreshAfterSet: ['On'],
@@ -573,7 +577,9 @@ export class CurtainDevice extends GenericDevice {
                                     get: async () => false,
                                     set: async (v) => {
                                         if (v) {
-                                            await this.moveOrPause(0);
+                                            this.log.info('[Blind Down] Command requested');
+                                            const result = await this.moveOrPause(0);
+                                            this.log.info('[Blind Down] Command result:', JSON.stringify(result));
                                         }
                                     },
                                     refreshAfterSet: ['On'],

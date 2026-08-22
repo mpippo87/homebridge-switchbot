@@ -30,5 +30,8 @@ export declare class SwitchBotClient implements ISwitchBotClient {
     private getManagedDevice;
     private getManagedDevices;
     private ensureDiscovered;
+    private getOpenApiToken;
+    private getOpenApiSecret;
+    private hydrateDeviceConnections;
 }
 //# sourceMappingURL=switchbotClient.d.ts.map

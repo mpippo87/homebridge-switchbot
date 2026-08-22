@@ -51,8 +51,8 @@ export class SwitchBotClient implements ISwitchBotClient {
       const rawNodeClientConfig = typeof (this.cfg as any)?.nodeClientConfig === 'object' ? (this.cfg as any).nodeClientConfig : {}
       const scanTimeout = this.resolveScanTimeoutMs(rawNodeClientConfig)
       this.client = new SwitchBot({
-        token: this.cfg.openApiToken,
-        secret: this.cfg.openApiSecret,
+        token: this.getOpenApiToken(),
+        secret: this.getOpenApiSecret(),
         // Enable built-in resilience features from node-switchbot v4.
         enableFallback: true, // Auto-fallback from BLE to API
         enableRetry: true, // Retry with exponential backoff
@@ -75,17 +75,17 @@ export class SwitchBotClient implements ISwitchBotClient {
       try {
         const fromManager = this.getManagedDevice(id)
         if (fromManager) {
-          return fromManager
+          return this.hydrateDeviceConnections(fromManager)
         }
 
         const devices = await this.ensureDiscovered(false)
         const fromDiscovery = devices.find((d: any) => d.id === id)
         if (fromDiscovery) {
-          return fromDiscovery
+          return this.hydrateDeviceConnections(fromDiscovery)
         }
 
         const refreshDevices = await this.ensureDiscovered(true)
-        return refreshDevices.find((d: any) => d.id === id)
+        return this.hydrateDeviceConnections(refreshDevices.find((d: any) => d.id === id))
       } catch (e: any) {
         if (e instanceof SwitchbotAuthenticationError) {
           this.logger?.error?.(`Authentication error for getDevice(${id}):`, e.message)
@@ -234,7 +234,7 @@ export class SwitchBotClient implements ISwitchBotClient {
   private getManagedDevice(id: string): any {
     const manager = (this.client as any)?.devices
     if (manager?.get) {
-      return manager.get(id)
+      return this.hydrateDeviceConnections(manager.get(id))
     }
     return undefined
   }
@@ -243,7 +243,7 @@ export class SwitchBotClient implements ISwitchBotClient {
     const manager = (this.client as any)?.devices
     if (manager?.list) {
       const list = manager.list()
-      return Array.isArray(list) ? list : []
+      return Array.isArray(list) ? list.map(device => this.hydrateDeviceConnections(device)).filter(Boolean) : []
     }
     return []
   }
@@ -261,6 +261,39 @@ export class SwitchBotClient implements ISwitchBotClient {
 
     const discovered = await this.client.discover()
     this.lastDiscoveryAt = Date.now()
-    return discovered
+    return Array.isArray(discovered) ? discovered.map(device => this.hydrateDeviceConnections(device)).filter(Boolean) : []
+  }
+
+  private getOpenApiToken(): string | undefined {
+    return this.cfg.openApiToken || (this.cfg as any)?.credentials?.token
+  }
+
+  private getOpenApiSecret(): string | undefined {
+    return this.cfg.openApiSecret || (this.cfg as any)?.credentials?.secret
+  }
+
+  private hydrateDeviceConnections(device: any): any {
+    if (!device || !this.client) {
+      return device
+    }
+
+    const nodeClient = this.client as any
+    const apiClient = nodeClient.apiClient ?? nodeClient.getAPIClient?.()
+    if (apiClient && !device.apiClient) {
+      device.apiClient = apiClient
+    }
+
+    const bleConnection = nodeClient.bleConnection
+    if (bleConnection && !device.bleConnection) {
+      device.bleConnection = bleConnection
+    }
+
+    const info = typeof device.getInfo === 'function' ? device.getInfo() : device.info
+    const deviceType = String(info?.deviceType ?? device.deviceType ?? '').toLowerCase()
+    if (deviceType === 'roller shade' && apiClient && typeof device.setPreferredConnection === 'function') {
+      device.setPreferredConnection('api')
+    }
+
+    return device
   }
 }

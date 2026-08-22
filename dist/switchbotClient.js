@@ -36,8 +36,8 @@ export class SwitchBotClient {
             const rawNodeClientConfig = typeof this.cfg?.nodeClientConfig === 'object' ? this.cfg.nodeClientConfig : {};
             const scanTimeout = this.resolveScanTimeoutMs(rawNodeClientConfig);
             this.client = new SwitchBot({
-                token: this.cfg.openApiToken,
-                secret: this.cfg.openApiSecret,
+                token: this.getOpenApiToken(),
+                secret: this.getOpenApiSecret(),
                 // Enable built-in resilience features from node-switchbot v4.
                 enableFallback: true, // Auto-fallback from BLE to API
                 enableRetry: true, // Retry with exponential backoff
@@ -60,15 +60,15 @@ export class SwitchBotClient {
             try {
                 const fromManager = this.getManagedDevice(id);
                 if (fromManager) {
-                    return fromManager;
+                    return this.hydrateDeviceConnections(fromManager);
                 }
                 const devices = await this.ensureDiscovered(false);
                 const fromDiscovery = devices.find((d) => d.id === id);
                 if (fromDiscovery) {
-                    return fromDiscovery;
+                    return this.hydrateDeviceConnections(fromDiscovery);
                 }
                 const refreshDevices = await this.ensureDiscovered(true);
-                return refreshDevices.find((d) => d.id === id);
+                return this.hydrateDeviceConnections(refreshDevices.find((d) => d.id === id));
             }
             catch (e) {
                 if (e instanceof SwitchbotAuthenticationError) {
@@ -218,7 +218,7 @@ export class SwitchBotClient {
     getManagedDevice(id) {
         const manager = this.client?.devices;
         if (manager?.get) {
-            return manager.get(id);
+            return this.hydrateDeviceConnections(manager.get(id));
         }
         return undefined;
     }
@@ -226,7 +226,7 @@ export class SwitchBotClient {
         const manager = this.client?.devices;
         if (manager?.list) {
             const list = manager.list();
-            return Array.isArray(list) ? list : [];
+            return Array.isArray(list) ? list.map(device => this.hydrateDeviceConnections(device)).filter(Boolean) : [];
         }
         return [];
     }
@@ -241,7 +241,33 @@ export class SwitchBotClient {
         }
         const discovered = await this.client.discover();
         this.lastDiscoveryAt = Date.now();
-        return discovered;
+        return Array.isArray(discovered) ? discovered.map(device => this.hydrateDeviceConnections(device)).filter(Boolean) : [];
+    }
+    getOpenApiToken() {
+        return this.cfg.openApiToken || this.cfg?.credentials?.token;
+    }
+    getOpenApiSecret() {
+        return this.cfg.openApiSecret || this.cfg?.credentials?.secret;
+    }
+    hydrateDeviceConnections(device) {
+        if (!device || !this.client) {
+            return device;
+        }
+        const nodeClient = this.client;
+        const apiClient = nodeClient.apiClient ?? nodeClient.getAPIClient?.();
+        if (apiClient && !device.apiClient) {
+            device.apiClient = apiClient;
+        }
+        const bleConnection = nodeClient.bleConnection;
+        if (bleConnection && !device.bleConnection) {
+            device.bleConnection = bleConnection;
+        }
+        const info = typeof device.getInfo === 'function' ? device.getInfo() : device.info;
+        const deviceType = String(info?.deviceType ?? device.deviceType ?? '').toLowerCase();
+        if (deviceType === 'roller shade' && apiClient && typeof device.setPreferredConnection === 'function') {
+            device.setPreferredConnection('api');
+        }
+        return device;
     }
 }
 //# sourceMappingURL=switchbotClient.js.map
