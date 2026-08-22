@@ -540,37 +540,47 @@ export class CurtainDevice extends GenericDevice {
                         },
                     },
                 },
+            ],
+            commandAccessories: [
                 {
-                    type: 'Switch',
+                    id: 'blind-up-command',
                     name: 'Blind Up',
-                    subtype: 'blind-up-command',
-                    characteristics: {
-                        On: {
-                            get: async () => false,
-                            set: async (v) => {
-                                if (v) {
-                                    await this.moveOrPause(100);
-                                }
+                    services: [
+                        {
+                            type: 'Switch',
+                            characteristics: {
+                                On: {
+                                    get: async () => false,
+                                    set: async (v) => {
+                                        if (v) {
+                                            await this.moveOrPause(100);
+                                        }
+                                    },
+                                    refreshAfterSet: ['On'],
+                                },
                             },
-                            refreshAfterSet: ['On'],
                         },
-                    },
+                    ],
                 },
                 {
-                    type: 'Switch',
+                    id: 'blind-down-command',
                     name: 'Blind Down',
-                    subtype: 'blind-down-command',
-                    characteristics: {
-                        On: {
-                            get: async () => false,
-                            set: async (v) => {
-                                if (v) {
-                                    await this.moveOrPause(0);
-                                }
+                    services: [
+                        {
+                            type: 'Switch',
+                            characteristics: {
+                                On: {
+                                    get: async () => false,
+                                    set: async (v) => {
+                                        if (v) {
+                                            await this.moveOrPause(0);
+                                        }
+                                    },
+                                    refreshAfterSet: ['On'],
+                                },
                             },
-                            refreshAfterSet: ['On'],
                         },
-                    },
+                    ],
                 },
             ],
         };

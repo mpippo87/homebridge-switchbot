@@ -347,6 +347,114 @@ export class SwitchBotHAPPlatform {
           }
         }
         this.log.info(`Created/updated HAP accessory ${d.id} (${type})`)
+        const commandAccessories = Array.isArray(accDesc?.commandAccessories) ? accDesc.commandAccessories : []
+        for (const commandAccessoryDesc of commandAccessories) {
+          try {
+            const commandId = String(commandAccessoryDesc.id || commandAccessoryDesc.name)
+            const commandUuid = hap.uuid.generate(`${d.id}:${commandId}`)
+            let commandAccessory: any = this.accessories.get(commandUuid)
+            if (!commandAccessory) {
+              commandAccessory = new (this.api as any).platformAccessory(commandAccessoryDesc.name || commandId, commandUuid)
+              accessoriesToRegister.push(commandAccessory)
+              this.accessories.set(commandUuid, commandAccessory)
+            }
+
+            commandAccessory.context = commandAccessory.context || {}
+            commandAccessory.context.deviceId = `${d.id}:${commandId}`
+            commandAccessory.context.parentDeviceId = d.id
+            commandAccessory.context.type = `${type}-command`
+            commandAccessory.displayName = commandAccessoryDesc.name || commandId
+
+            try {
+              const InfoService = hap.Service.AccessoryInformation
+              if (InfoService) {
+                const info = commandAccessory.getService(InfoService) || commandAccessory.addService(InfoService)
+                info.setCharacteristic(hap.Characteristic.Manufacturer, 'SwitchBot')
+                info.setCharacteristic(hap.Characteristic.Model, `${type} Command`)
+                info.setCharacteristic(hap.Characteristic.Name, commandAccessoryDesc.name || commandId)
+                info.setCharacteristic(hap.Characteristic.SerialNumber, `${d.id}:${commandId}`)
+                info.setCharacteristic(hap.Characteristic.FirmwareRevision, '1.0.0')
+              }
+            } catch (e) {
+              // ignore accessory information failures
+            }
+
+            const commandServices = Array.isArray(commandAccessoryDesc.services) ? commandAccessoryDesc.services : []
+            const commandServiceDescriptors = commandServices
+              .map((s: any) => {
+                const Service = (hap.Service as any)[s.type]
+                return Service ? { subtype: s.subtype, type: s.type, uuid: Service.UUID } : undefined
+              })
+              .filter(Boolean)
+
+            for (const existingService of commandAccessory.services.slice()) {
+              const isAccessoryInformation = hap.Service.AccessoryInformation
+                && existingService.UUID === hap.Service.AccessoryInformation.UUID
+              const isDescriptorService = commandServiceDescriptors.some((service: any) => {
+                if (existingService.UUID !== service.uuid) {
+                  return false
+                }
+                return service.subtype ? existingService.subtype === service.subtype : !existingService.subtype
+              })
+              if (!isAccessoryInformation && !isDescriptorService) {
+                commandAccessory.removeService(existingService)
+              }
+            }
+
+            for (const s of commandServices) {
+              const Service = (hap.Service as any)[s.type]
+              if (!Service) {
+                continue
+              }
+              const service = s.subtype
+                ? commandAccessory.getServiceById(Service, s.subtype) || commandAccessory.addService(Service, s.name || commandAccessoryDesc.name || s.type, s.subtype)
+                : commandAccessory.getService(Service) || commandAccessory.addService(Service, s.name || commandAccessoryDesc.name || s.type)
+              const charNames = Object.keys(s.characteristics || {})
+              const charUUIDs = charNames
+                .map(charName => (hap.Characteristic as any)[charName]?.UUID)
+                .filter(Boolean)
+              for (const existingChar of service.characteristics.slice()) {
+                const isNameCharacteristic = hap.Characteristic.Name
+                  && existingChar.UUID === hap.Characteristic.Name.UUID
+                if (!isNameCharacteristic && !charUUIDs.includes(existingChar.UUID)) {
+                  service.removeCharacteristic(existingChar)
+                }
+              }
+              for (const [charName, getterSetterRaw] of Object.entries(s.characteristics || {})) {
+                const getterSetter: any = getterSetterRaw
+                const Characteristic = (hap.Characteristic as any)[charName]
+                if (!Characteristic) {
+                  continue
+                }
+                if (getterSetter && typeof getterSetter.get === 'function') {
+                  service.getCharacteristic(Characteristic).onGet(getterSetter.get)
+                }
+                if (getterSetter && typeof getterSetter.set === 'function') {
+                  service.getCharacteristic(Characteristic).onSet(async (value: any) => {
+                    await getterSetter.set(value)
+
+                    const refreshAfterSet = Array.isArray(getterSetter.refreshAfterSet) ? getterSetter.refreshAfterSet : []
+                    for (const refreshCharName of refreshAfterSet) {
+                      const refreshGetterSetter: any = (s.characteristics || {})[refreshCharName]
+                      const RefreshCharacteristic = (hap.Characteristic as any)[refreshCharName]
+                      if (!RefreshCharacteristic || !refreshGetterSetter || typeof refreshGetterSetter.get !== 'function') {
+                        continue
+                      }
+                      try {
+                        service.getCharacteristic(RefreshCharacteristic).updateValue(await refreshGetterSetter.get())
+                      } catch (e) {
+                        this.log.debug?.(`Failed to refresh ${refreshCharName} after setting ${charName}`, e)
+                      }
+                    }
+                  })
+                }
+              }
+            }
+            this.log.info(`Created/updated HAP command accessory ${commandAccessoryDesc.name || commandId}`)
+          } catch (e) {
+            this.log.warn('HAP command accessory creation failed', e)
+          }
+        }
       } catch (e) {
         this.log.warn('HAP accessory creation failed', e)
       }
