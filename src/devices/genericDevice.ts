@@ -487,6 +487,8 @@ export class CurtainDevice extends GenericDevice {
   private lastTargetPosition = 0
   private positionState = 2
   private preferLocalPositionUntil = 0
+  private motionCommandUntil = 0
+  private readonly motionCommandWindowMs = 45000
 
   private clampHomeKitPosition(position: number): number {
     return Math.max(0, Math.min(100, Math.round(Number(position))))
@@ -498,6 +500,41 @@ export class CurtainDevice extends GenericDevice {
 
   private toSwitchBotPosition(homeKitPosition: number): number {
     return 100 - this.clampHomeKitPosition(homeKitPosition)
+  }
+
+  private isMotionCommandActive(): boolean {
+    return Date.now() < this.motionCommandUntil || this.positionState !== 2
+  }
+
+  private async pauseMotion(): Promise<void> {
+    await this.setState({
+      command: 'pause',
+      parameter: 'default',
+      commandType: 'command',
+    })
+    this.motionCommandUntil = 0
+    this.positionState = 2
+  }
+
+  private async moveOrPause(homeKitPosition: number): Promise<void> {
+    if (this.isMotionCommandActive()) {
+      await this.pauseMotion()
+      return
+    }
+
+    const position = this.clampHomeKitPosition(homeKitPosition)
+    this.lastTargetPosition = position
+    this.positionState = position > this.lastKnownPosition ? 1 : position < this.lastKnownPosition ? 0 : 2
+
+    if (this.positionState === 2) {
+      this.motionCommandUntil = 0
+      return
+    }
+
+    this.motionCommandUntil = Date.now() + this.motionCommandWindowMs
+    await this.setState({ position: this.toSwitchBotPosition(position) })
+    this.lastKnownPosition = position
+    this.preferLocalPositionUntil = Date.now() + 30000
   }
 
   private async getPositionForHomeKit(): Promise<number> {
@@ -538,6 +575,7 @@ export class CurtainDevice extends GenericDevice {
                 const position = this.clampHomeKitPosition(Number(v))
                 this.lastTargetPosition = position
                 this.positionState = position > this.lastKnownPosition ? 1 : position < this.lastKnownPosition ? 0 : 2
+                this.motionCommandUntil = this.positionState === 2 ? 0 : Date.now() + this.motionCommandWindowMs
                 await this.setState({ position: this.toSwitchBotPosition(position) })
                 this.lastKnownPosition = position
                 this.preferLocalPositionUntil = Date.now() + 30000
@@ -547,14 +585,41 @@ export class CurtainDevice extends GenericDevice {
             },
             HoldPosition: {
               set: async () => {
-                await this.setState({
-                  command: 'pause',
-                  parameter: 'default',
-                  commandType: 'command',
-                })
-                this.positionState = 2
+                await this.pauseMotion()
               },
               refreshAfterSet: ['PositionState'],
+            },
+          },
+        },
+        {
+          type: 'Switch',
+          name: `${this.opts.name ?? this.opts.type} Up`,
+          subtype: 'shade-up',
+          characteristics: {
+            On: {
+              get: async () => false,
+              set: async (v: any) => {
+                if (v) {
+                  await this.moveOrPause(100)
+                }
+              },
+              refreshAfterSet: ['On'],
+            },
+          },
+        },
+        {
+          type: 'Switch',
+          name: `${this.opts.name ?? this.opts.type} Down`,
+          subtype: 'shade-down',
+          characteristics: {
+            On: {
+              get: async () => false,
+              set: async (v: any) => {
+                if (v) {
+                  await this.moveOrPause(0)
+                }
+              },
+              refreshAfterSet: ['On'],
             },
           },
         },

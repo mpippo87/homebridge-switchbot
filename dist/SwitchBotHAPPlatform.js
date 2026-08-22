@@ -286,13 +286,17 @@ export class SwitchBotHAPPlatform {
                         if (!Service) {
                             continue;
                         }
-                        const service = accessory.getService(Service) || accessory.addService(Service);
+                        const service = s.subtype
+                            ? accessory.getServiceById(Service, s.subtype) || accessory.addService(Service, s.name || s.type, s.subtype)
+                            : accessory.getService(Service) || accessory.addService(Service);
                         const charNames = Object.keys(s.characteristics || {});
                         const charUUIDs = charNames
                             .map(charName => hap.Characteristic[charName]?.UUID)
                             .filter(Boolean);
                         for (const existingChar of service.characteristics.slice()) {
-                            if (!charUUIDs.includes(existingChar.UUID)) {
+                            const isNameCharacteristic = hap.Characteristic.Name
+                                && existingChar.UUID === hap.Characteristic.Name.UUID;
+                            if (!isNameCharacteristic && !charUUIDs.includes(existingChar.UUID)) {
                                 service.removeCharacteristic(existingChar);
                             }
                         }

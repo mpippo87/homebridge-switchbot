@@ -447,6 +447,8 @@ export class CurtainDevice extends GenericDevice {
     lastTargetPosition = 0;
     positionState = 2;
     preferLocalPositionUntil = 0;
+    motionCommandUntil = 0;
+    motionCommandWindowMs = 45000;
     clampHomeKitPosition(position) {
         return Math.max(0, Math.min(100, Math.round(Number(position))));
     }
@@ -455,6 +457,35 @@ export class CurtainDevice extends GenericDevice {
     }
     toSwitchBotPosition(homeKitPosition) {
         return 100 - this.clampHomeKitPosition(homeKitPosition);
+    }
+    isMotionCommandActive() {
+        return Date.now() < this.motionCommandUntil || this.positionState !== 2;
+    }
+    async pauseMotion() {
+        await this.setState({
+            command: 'pause',
+            parameter: 'default',
+            commandType: 'command',
+        });
+        this.motionCommandUntil = 0;
+        this.positionState = 2;
+    }
+    async moveOrPause(homeKitPosition) {
+        if (this.isMotionCommandActive()) {
+            await this.pauseMotion();
+            return;
+        }
+        const position = this.clampHomeKitPosition(homeKitPosition);
+        this.lastTargetPosition = position;
+        this.positionState = position > this.lastKnownPosition ? 1 : position < this.lastKnownPosition ? 0 : 2;
+        if (this.positionState === 2) {
+            this.motionCommandUntil = 0;
+            return;
+        }
+        this.motionCommandUntil = Date.now() + this.motionCommandWindowMs;
+        await this.setState({ position: this.toSwitchBotPosition(position) });
+        this.lastKnownPosition = position;
+        this.preferLocalPositionUntil = Date.now() + 30000;
     }
     async getPositionForHomeKit() {
         if (Date.now() < this.preferLocalPositionUntil) {
@@ -493,6 +524,7 @@ export class CurtainDevice extends GenericDevice {
                                 const position = this.clampHomeKitPosition(Number(v));
                                 this.lastTargetPosition = position;
                                 this.positionState = position > this.lastKnownPosition ? 1 : position < this.lastKnownPosition ? 0 : 2;
+                                this.motionCommandUntil = this.positionState === 2 ? 0 : Date.now() + this.motionCommandWindowMs;
                                 await this.setState({ position: this.toSwitchBotPosition(position) });
                                 this.lastKnownPosition = position;
                                 this.preferLocalPositionUntil = Date.now() + 30000;
@@ -502,14 +534,41 @@ export class CurtainDevice extends GenericDevice {
                         },
                         HoldPosition: {
                             set: async () => {
-                                await this.setState({
-                                    command: 'pause',
-                                    parameter: 'default',
-                                    commandType: 'command',
-                                });
-                                this.positionState = 2;
+                                await this.pauseMotion();
                             },
                             refreshAfterSet: ['PositionState'],
+                        },
+                    },
+                },
+                {
+                    type: 'Switch',
+                    name: `${this.opts.name ?? this.opts.type} Up`,
+                    subtype: 'shade-up',
+                    characteristics: {
+                        On: {
+                            get: async () => false,
+                            set: async (v) => {
+                                if (v) {
+                                    await this.moveOrPause(100);
+                                }
+                            },
+                            refreshAfterSet: ['On'],
+                        },
+                    },
+                },
+                {
+                    type: 'Switch',
+                    name: `${this.opts.name ?? this.opts.type} Down`,
+                    subtype: 'shade-down',
+                    characteristics: {
+                        On: {
+                            get: async () => false,
+                            set: async (v) => {
+                                if (v) {
+                                    await this.moveOrPause(0);
+                                }
+                            },
+                            refreshAfterSet: ['On'],
                         },
                     },
                 },

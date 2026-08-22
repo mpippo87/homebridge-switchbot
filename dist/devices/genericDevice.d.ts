@@ -69,12 +69,17 @@ export declare class CurtainDevice extends GenericDevice {
     private lastTargetPosition;
     private positionState;
     private preferLocalPositionUntil;
+    private motionCommandUntil;
+    private readonly motionCommandWindowMs;
     private clampHomeKitPosition;
     private toHomeKitPosition;
     private toSwitchBotPosition;
+    private isMotionCommandActive;
+    private pauseMotion;
+    private moveOrPause;
     private getPositionForHomeKit;
     createHAPAccessory(api: any): {
-        services: {
+        services: ({
             type: string;
             characteristics: {
                 CurrentPosition: {
@@ -92,8 +97,26 @@ export declare class CurtainDevice extends GenericDevice {
                     set: () => Promise<void>;
                     refreshAfterSet: string[];
                 };
+                On?: undefined;
             };
-        }[];
+            name?: undefined;
+            subtype?: undefined;
+        } | {
+            type: string;
+            name: string;
+            subtype: string;
+            characteristics: {
+                On: {
+                    get: () => Promise<boolean>;
+                    set: (v: any) => Promise<void>;
+                    refreshAfterSet: string[];
+                };
+                CurrentPosition?: undefined;
+                PositionState?: undefined;
+                TargetPosition?: undefined;
+                HoldPosition?: undefined;
+            };
+        })[];
     };
     createMatterAccessory(api: any): Promise<any>;
 }

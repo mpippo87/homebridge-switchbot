@@ -35,4 +35,40 @@ describe('curtain hold position', () => {
 
     expect(pause).toHaveBeenCalledOnce()
   })
+
+  it('should expose momentary up/down switches that pause on a second press while moving', async () => {
+    const client = { setDeviceState: vi.fn().mockResolvedValue({ status: 'success' }) }
+    const rollerShade = new RollerShadeDevice(
+      { id: 'shade1', name: 'Office Blind', type: 'Roller Shade', log: mockLogger },
+      { _client: client, blePollingEnabled: false, log: mockLogger } as any,
+    )
+
+    const accessory = rollerShade.createHAPAccessory({})
+    const switches = accessory.services.filter((service: any) => service.type === 'Switch')
+    const up = switches.find((service: any) => service.subtype === 'shade-up')
+    const down = switches.find((service: any) => service.subtype === 'shade-down')
+
+    expect(up?.name).toBe('Office Blind Up')
+    expect(down?.name).toBe('Office Blind Down')
+
+    await up.characteristics.On.set(true)
+    await up.characteristics.On.set(true)
+    await down.characteristics.On.set(true)
+
+    expect(client.setDeviceState).toHaveBeenNthCalledWith(1, 'shade1', {
+      command: 'setPosition',
+      parameter: '0',
+      commandType: 'command',
+    })
+    expect(client.setDeviceState).toHaveBeenNthCalledWith(2, 'shade1', {
+      command: 'pause',
+      parameter: 'default',
+      commandType: 'command',
+    })
+    expect(client.setDeviceState).toHaveBeenNthCalledWith(3, 'shade1', {
+      command: 'setPosition',
+      parameter: '100',
+      commandType: 'command',
+    })
+  })
 })
