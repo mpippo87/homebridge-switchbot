@@ -66,7 +66,7 @@ describe('curtain hold position', () => {
     expect(setPosition).toHaveBeenCalledWith(75)
   })
 
-  it('should expose momentary up/down switches that pause on a second press while moving', async () => {
+  it('should expose momentary up/down/stop switches for blind control', async () => {
     const client = { setDeviceState: vi.fn().mockResolvedValue({ status: 'success' }) }
     const rollerShade = new RollerShadeDevice(
       { id: 'shade1', name: 'Office Blind', type: 'Roller Shade', log: mockLogger },
@@ -76,15 +76,19 @@ describe('curtain hold position', () => {
     const accessory = rollerShade.createHAPAccessory({})
     const upAccessory = accessory.commandAccessories.find((commandAccessory: any) => commandAccessory.id === 'blind-up-command')
     const downAccessory = accessory.commandAccessories.find((commandAccessory: any) => commandAccessory.id === 'blind-down-command')
+    const stopAccessory = accessory.commandAccessories.find((commandAccessory: any) => commandAccessory.id === 'blind-stop-command')
     const up = upAccessory.services.find((service: any) => service.type === 'Switch')
     const down = downAccessory.services.find((service: any) => service.type === 'Switch')
+    const stop = stopAccessory.services.find((service: any) => service.type === 'Switch')
 
     expect(upAccessory?.name).toBe('Blind Up')
     expect(downAccessory?.name).toBe('Blind Down')
+    expect(stopAccessory?.name).toBe('Blind Stop')
 
     await up.characteristics.On.set(true)
     await up.characteristics.On.set(true)
     await down.characteristics.On.set(true)
+    await stop.characteristics.On.set(true)
 
     expect(client.setDeviceState).toHaveBeenNthCalledWith(1, 'shade1', {
       command: 'setPosition',
@@ -99,6 +103,11 @@ describe('curtain hold position', () => {
     expect(client.setDeviceState).toHaveBeenNthCalledWith(3, 'shade1', {
       command: 'setPosition',
       parameter: '100',
+      commandType: 'command',
+    })
+    expect(client.setDeviceState).toHaveBeenNthCalledWith(4, 'shade1', {
+      command: 'pause',
+      parameter: 'default',
       commandType: 'command',
     })
   })

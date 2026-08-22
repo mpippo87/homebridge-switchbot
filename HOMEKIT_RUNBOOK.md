@@ -75,8 +75,9 @@ Current Homebridge package dependencies:
 Current private/local package references:
 
 - `@switchbot/homebridge-switchbot` is installed from
-  `file:local-packages/switchbot-homebridge-switchbot-5.0.4-codex-momentary.tgz`.
-- `homebridge-linak` is installed from `github:mpippo87/homebridge-linak`.
+  `file:local-packages/switchbot-homebridge-switchbot-5.0.4-codex-stop.tgz`.
+- `homebridge-linak` is installed from
+  `file:local-packages/homebridge-linak-1.1.2-codex-ble-recovery.tgz`.
 
 ## Current SwitchBot setup
 
@@ -92,6 +93,7 @@ HomeKit accessories created by the fork:
 - `Roller Shade E3`: normal Window Covering accessory.
 - `Blind Down`: momentary command switch.
 - `Blind Up`: momentary command switch.
+- `Blind Stop`: momentary command switch.
 
 Expected behaviour:
 
@@ -99,6 +101,7 @@ Expected behaviour:
 - Press `Blind Up`: the shade moves toward open.
 - Press either command again while the shade is considered moving: the plugin
   sends `pause`.
+- Press `Blind Stop`: the plugin sends `pause` directly.
 - Each command switch turns `On` briefly, then automatically returns to `Off`.
 
 The Apple Home Aqara automations must use `Turn On`, not toggle and not `Off`.
@@ -111,6 +114,7 @@ The current fork contains several operational fixes:
   `AccessoryInformation`.
 - Roller Shade exposes `HoldPosition`.
 - Roller Shade exposes separate command accessories for up/down.
+- Roller Shade exposes a dedicated stop command accessory.
 - The command switches are momentary and visibly reset.
 - Roller Shade commands prefer OpenAPI when available.
 - `node-switchbot` device instances are hydrated with the API client when
@@ -200,7 +204,7 @@ ssh -p 2222 pi@127.0.0.1 'mkdir -p /var/lib/homebridge/local-packages'
 
 scp -P 2222 \
   /tmp/switchbot-homebridge-switchbot-5.0.4.tgz \
-  pi@127.0.0.1:/var/lib/homebridge/local-packages/switchbot-homebridge-switchbot-5.0.4-codex-momentary.tgz
+  pi@127.0.0.1:/var/lib/homebridge/local-packages/switchbot-homebridge-switchbot-5.0.4-codex-stop.tgz
 ```
 
 Do not leave the Homebridge dependency pointing to `/tmp`. `/tmp` can be cleaned
@@ -212,7 +216,7 @@ Run on the Pi:
 
 ```bash
 cd /var/lib/homebridge
-npm install ./local-packages/switchbot-homebridge-switchbot-5.0.4-codex-momentary.tgz --save
+npm install ./local-packages/switchbot-homebridge-switchbot-5.0.4-codex-stop.tgz --save
 sudo setcap cap_net_raw+eip /opt/homebridge/bin/node
 sudo hb-service restart
 sleep 18
@@ -236,7 +240,7 @@ node -e 'const p=require("/var/lib/homebridge/package.json"); console.log(p.depe
 Expected:
 
 ```text
-file:local-packages/switchbot-homebridge-switchbot-5.0.4-codex-momentary.tgz
+file:local-packages/switchbot-homebridge-switchbot-5.0.4-codex-stop.tgz
 ```
 
 ### 6. Confirm the fork was not overwritten
@@ -248,7 +252,7 @@ cd /var/lib/homebridge/node_modules/@switchbot/homebridge-switchbot
 npm pkg get version
 grep -n "hydrateDeviceConnections\|getOpenApiToken\|setPreferredConnection('api')" dist/switchbotClient.js
 grep -n "sendRollerShadeAPICommand\|clampRollerShadePosition" dist/deviceCommandMapper.js
-grep -n "commandMoveOrPause\|autoResetAfterMs\|Blind Up\|Blind Down\|Command result" dist/devices/genericDevice.js
+grep -n "commandMoveOrPause\|autoResetAfterMs\|Blind Up\|Blind Down\|Blind Stop\|Command result" dist/devices/genericDevice.js
 grep -n "autoResetAfterMs" dist/SwitchBotHAPPlatform.js
 ```
 
@@ -302,6 +306,7 @@ Expected HomeKit accessories:
 - `Roller Shade E3`
 - `Blind Down`
 - `Blind Up`
+- `Blind Stop`
 
 Manual Apple Home test:
 
@@ -311,6 +316,16 @@ Manual Apple Home test:
 4. Tap `Blind Down` again while moving.
 5. The shade should stop.
 6. Repeat with `Blind Up`.
+
+Do not test the physical shade when it must remain closed. The presence of
+`Blind Stop` can be verified from Homebridge/Apple Home without turning it on.
+
+Hybrid Matter/Homebridge flow to test later:
+
+- Use the direct Apple Home/Matter shade accessory for normal movement.
+- Use `Blind Stop` for the explicit stop action.
+- Build Aqara/Shortcut logic only after confirming the Matter movement path is
+  faster and Apple Home's moving state is reliable.
 
 If this manual test works, the plugin and Apple Home bridge are working.
 
@@ -353,6 +368,7 @@ The current code creates generic command accessory names:
 
 - `Blind Down`
 - `Blind Up`
+- `Blind Stop`
 
 With two Roller Shades, HomeKit may show duplicate command names. The accessory
 UUIDs will be distinct because they include the SwitchBot device id, but the
@@ -452,7 +468,7 @@ sudo journalctl -u homebridge -n 200 --no-pager
 
 ```bash
 sudo journalctl -u homebridge -n 300 --no-pager \
-  | grep -iE "SwitchBot|Roller Shade|Blind Up|Blind Down|Command result|noble|bluetooth|error|warn"
+  | grep -iE "SwitchBot|Roller Shade|Blind Up|Blind Down|Blind Stop|Command result|noble|bluetooth|error|warn"
 ```
 
 Expected command logs:
@@ -467,6 +483,13 @@ or:
 ```text
 [Blind Up] Command requested
 [Blind Up] Command result: true
+```
+
+or:
+
+```text
+[Blind Stop] Command requested
+[Blind Stop] Command result: true
 ```
 
 ### Manual command path test
@@ -512,6 +535,8 @@ NODE
 ### If Homebridge works but Apple Home does not
 
 1. Test `Blind Up` / `Blind Down` manually in Homebridge UI.
+2. For stop-only testing, use `Blind Stop` only while the shade is already
+   moving and it is safe to stop it.
 2. Test them manually in Apple Home.
 3. Watch logs while tapping in Apple Home.
 4. If logs show `Command requested`, Apple Home is reaching Homebridge.

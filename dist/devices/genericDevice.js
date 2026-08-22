@@ -519,6 +519,7 @@ export class CurtainDevice extends GenericDevice {
     createHAPAccessory(api) {
         let blindUpCommandOnUntil = 0;
         let blindDownCommandOnUntil = 0;
+        let blindStopCommandOnUntil = 0;
         const commandOnMs = 1200;
         return {
             services: [
@@ -605,6 +606,33 @@ export class CurtainDevice extends GenericDevice {
                                         }
                                         else {
                                             blindDownCommandOnUntil = 0;
+                                        }
+                                    },
+                                    refreshAfterSet: ['On'],
+                                    autoResetAfterMs: commandOnMs,
+                                },
+                            },
+                        },
+                    ],
+                },
+                {
+                    id: 'blind-stop-command',
+                    name: 'Blind Stop',
+                    services: [
+                        {
+                            type: 'Switch',
+                            characteristics: {
+                                On: {
+                                    get: async () => Date.now() < blindStopCommandOnUntil,
+                                    set: async (v) => {
+                                        if (v) {
+                                            blindStopCommandOnUntil = Date.now() + commandOnMs;
+                                            this.log.info('[Blind Stop] Command requested');
+                                            const result = await this.pauseMotion();
+                                            this.log.info('[Blind Stop] Command result:', JSON.stringify(result));
+                                        }
+                                        else {
+                                            blindStopCommandOnUntil = 0;
                                         }
                                     },
                                     refreshAfterSet: ['On'],

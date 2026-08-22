@@ -97,6 +97,13 @@ The local commits that matter for the Roller Shade flow are:
     for a position refresh. This makes button presses feel more responsive and
     avoids stale position reads preventing a command.
 
+- Current untagged fork update: dedicated stop command
+  - Adds a third momentary switch accessory named `Blind Stop`.
+  - `Blind Stop` sends only the Roller Shade `pause` command.
+  - This is intended for a hybrid Apple Home setup where Matter/Apple Home can
+    handle normal up/down movement and Homebridge provides the missing explicit
+    stop action.
+
 ### Why the Roller Shade patch exists
 
 During debugging, the plugin command path was proven to reach `node-switchbot`,
@@ -142,10 +149,11 @@ Shade, even though the public Roller Shade command table only documents
 ### Expected HomeKit behaviour
 
 The Roller Shade is exposed as the normal HomeKit window covering accessory.
-The fork also creates two extra momentary switch accessories:
+The fork also creates three extra momentary switch accessories:
 
 - `Blind Up`
 - `Blind Down`
+- `Blind Stop`
 
 The expected user flow is:
 
@@ -153,12 +161,20 @@ The expected user flow is:
 - Press `Blind Up` again while movement is active: send `pause`.
 - Press `Blind Down`: move the Roller Shade toward closed.
 - Press `Blind Down` again while movement is active: send `pause`.
+- Press `Blind Stop`: send `pause` directly, without starting movement.
 
 These switches are intended to be targets for separate Aqara button automations
 in Apple Home. For example:
 
 - Aqara button 1 single press -> turn on `Blind Down`.
 - Aqara button 2 single press -> turn on `Blind Up`.
+
+For the hybrid Matter/Homebridge flow to test next:
+
+- use the direct Apple Home/Matter shade accessory for normal open/close or
+  position movement;
+- use `Blind Stop` as the explicit Homebridge stop action when Apple Home reports
+  the shade is already moving.
 
 The switches are momentary from the plugin side: their `On` getter returns
 `true` only during a short command window, then returns `false`. HomeKit should
@@ -174,7 +190,7 @@ Apple Home/Aqara automation gotcha: the action inside `Single Press` must be
 `Single Press -> Blind Down` while the detail action is still effectively `Off`;
 in that case the plugin ignores the write and no command is logged.
 
-If Apple Home shows duplicate `Blind Up`, `Blind Down`, or `Roller Shade E3`
+If Apple Home shows duplicate `Blind Up`, `Blind Down`, `Blind Stop`, or `Roller Shade E3`
 tiles, first check Homebridge's cached accessories before removing bridges from
 Apple Home. During the original debugging, Homebridge cache had one command
 accessory of each type, while Apple Home still showed stale duplicated services.
@@ -203,7 +219,7 @@ Copy and install through that tunnel:
 ```bash
 scp -P 2222 \
   /tmp/switchbot-homebridge-switchbot-5.0.4.tgz \
-  pi@127.0.0.1:/var/lib/homebridge/local-packages/switchbot-homebridge-switchbot-5.0.4-codex-momentary.tgz
+  pi@127.0.0.1:/var/lib/homebridge/local-packages/switchbot-homebridge-switchbot-5.0.4-codex-stop.tgz
 
 ssh -p 2222 pi@127.0.0.1
 ```
@@ -223,7 +239,7 @@ Then install the fork package:
 
 ```bash
 cd /var/lib/homebridge
-npm install ./local-packages/switchbot-homebridge-switchbot-5.0.4-codex-momentary.tgz --save
+npm install ./local-packages/switchbot-homebridge-switchbot-5.0.4-codex-stop.tgz --save
 sudo setcap cap_net_raw+eip /opt/homebridge/bin/node
 sudo hb-service restart
 sleep 18
@@ -238,7 +254,7 @@ Expected final checks:
   `/var/lib/homebridge/node_modules/@switchbot/homebridge-switchbot` prints
   `"5.0.4"`.
 - `/var/lib/homebridge/package.json` points to
-  `file:local-packages/switchbot-homebridge-switchbot-5.0.4-codex-momentary.tgz`
+  `file:local-packages/switchbot-homebridge-switchbot-5.0.4-codex-stop.tgz`
   for `@switchbot/homebridge-switchbot`.
 - `sudo /usr/sbin/getcap /opt/homebridge/bin/node` prints
   `/opt/homebridge/bin/node cap_net_raw=eip`.
@@ -252,7 +268,7 @@ cd /var/lib/homebridge/node_modules/@switchbot/homebridge-switchbot
 npm pkg get version
 grep -n "hydrateDeviceConnections\|getOpenApiToken\|setPreferredConnection('api')" dist/switchbotClient.js
 grep -n "sendRollerShadeAPICommand\|clampRollerShadePosition" dist/deviceCommandMapper.js
-grep -n "commandMoveOrPause\|autoResetAfterMs\|Blind Up\|Blind Down\|Command result" dist/devices/genericDevice.js
+grep -n "commandMoveOrPause\|autoResetAfterMs\|Blind Up\|Blind Down\|Blind Stop\|Command result" dist/devices/genericDevice.js
 grep -n "autoResetAfterMs" dist/SwitchBotHAPPlatform.js
 ```
 
@@ -266,7 +282,7 @@ The fork is still installed if:
 - `commandMoveOrPause` and `autoResetAfterMs` exist in
   `dist/devices/genericDevice.js`;
 - `autoResetAfterMs` exists in `dist/SwitchBotHAPPlatform.js`;
-- `Blind Up`, `Blind Down`, and `Command result` exist in
+- `Blind Up`, `Blind Down`, `Blind Stop`, and `Command result` exist in
   `dist/devices/genericDevice.js`.
 
 If those strings are missing, reinstall the tarball from this fork.
@@ -284,7 +300,7 @@ Filter SwitchBot-related logs:
 
 ```bash
 sudo journalctl -u homebridge -n 300 --no-pager \
-  | grep -iE "SwitchBot|Roller Shade|Blind Up|Blind Down|Command result|noble|bluetooth|error|warn"
+  | grep -iE "SwitchBot|Roller Shade|Blind Up|Blind Down|Blind Stop|Command result|noble|bluetooth|error|warn"
 ```
 
 Good command logs look like:
@@ -299,6 +315,13 @@ or:
 ```text
 [Blind Down] Command requested
 [Blind Down] Command result: true
+```
+
+or:
+
+```text
+[Blind Stop] Command requested
+[Blind Stop] Command result: true
 ```
 
 If the command result is `false`, test the OpenAPI path directly before changing
@@ -331,6 +354,7 @@ Expected accessory names:
 - `Roller Shade E3`
 - `Blind Up`
 - `Blind Down`
+- `Blind Stop`
 
 ### BLE notes for Raspberry Pi
 
