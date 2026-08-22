@@ -4,7 +4,7 @@ This is the SwitchBot-specific copy of the Homebridge/HomeKit runbook. The
 central operational runbook lives one folder above this fork:
 
 ```text
-/Users/filippominelle/Documents/Xcode/homebridge/HOMEKIT_RUNBOOK.md
+/Users/filippominelle/Documents/Xcode/homebridge/homebridge.md
 ```
 
 Use the central file as the first place to look during recovery. Keep this file
@@ -20,12 +20,12 @@ Recommended layout:
 
 ```text
 /Users/filippominelle/Documents/Xcode/homebridge/
-  HOMEKIT_RUNBOOK.md                         # central recovery and operations guide
+  homebridge.md                              # central recovery and operations guide
   homebridge-switchbot-patched/
     README.md                                # upstream README plus fork notes
     HOMEKIT_RUNBOOK.md                       # SwitchBot-specific technical details
   homebridge-linak-patched/
-    README.md or LINAK_RUNBOOK.md            # future Linak-specific notes
+    homebridge-linak/LINAK_RUNBOOK.md        # Linak-specific technical details
 ```
 
 Decision rule:
@@ -434,9 +434,10 @@ Known fork-sensitive plugins:
 - `@switchbot/homebridge-switchbot`
 - `homebridge-linak`
 
-The Linak setup should get its own investigation later. Known symptom from user
-experience: the desk initially worked, but after powering the desk off/on it may
-not resynchronise. Document the final Linak fix here after it is debugged.
+The Linak setup has its own runbook at
+`homebridge-linak-patched/homebridge-linak/LINAK_RUNBOOK.md`. The current fork
+fixes the desk resynchronisation issue by bounding `idasen-controller` calls with
+timeouts and resetting HomeKit movement/polling state after errors or timeouts.
 
 ## Troubleshooting
 
