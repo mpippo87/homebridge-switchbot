@@ -1,11 +1,42 @@
 # HomeKit and Homebridge runbook
 
-This document describes the working Homebridge/HomeKit setup, how to rebuild it
-from scratch, how to update the private plugin forks, and how to troubleshoot the
-Roller Shade and Aqara button flow.
+This is the SwitchBot-specific copy of the Homebridge/HomeKit runbook. The
+central operational runbook lives one folder above this fork:
+
+```text
+/Users/filippominelle/Documents/Xcode/homebridge/HOMEKIT_RUNBOOK.md
+```
+
+Use the central file as the first place to look during recovery. Keep this file
+for SwitchBot-specific technical details: the Roller Shade fork patches, numeric
+OpenAPI command format, and Aqara button behaviour.
 
 Keep this file in git with the private Homebridge plugin forks. It is intended
 for recovery and future maintenance, not for upstream publication.
+
+## Documentation layout
+
+Recommended layout:
+
+```text
+/Users/filippominelle/Documents/Xcode/homebridge/
+  HOMEKIT_RUNBOOK.md                         # central recovery and operations guide
+  homebridge-switchbot-patched/
+    README.md                                # upstream README plus fork notes
+    HOMEKIT_RUNBOOK.md                       # SwitchBot-specific technical details
+  homebridge-linak-patched/
+    README.md or LINAK_RUNBOOK.md            # future Linak-specific notes
+```
+
+Decision rule:
+
+- Keep one central runbook for the whole Homebridge/HomeKit system.
+- Add a plugin-specific runbook only when a plugin is private, patched, fragile,
+  or has a special recovery flow.
+- For normal npm plugins, document the package name, version/source, config
+  shape, exposed accessories, and troubleshooting in the central file only.
+- For private forks, keep the central file as the operational checklist and the
+  plugin folder as the technical explanation of the patch.
 
 ## Current working state
 
@@ -595,4 +626,3 @@ When a new plugin is added or fixed, update this file with:
 - known failure modes;
 - rollback steps;
 - relevant fork commit hashes.
-
