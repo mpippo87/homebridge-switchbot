@@ -38,6 +38,10 @@ Important: this fork is intentionally installed from a packed tarball, not from
 the public npm package. Installing or updating `@switchbot/homebridge-switchbot`
 from the Homebridge UI or npm registry can overwrite these local patches.
 
+For the full Homebridge/HomeKit recovery and update procedure, including Aqara
+button automations and adding a second Roller Shade, see
+[`HOMEKIT_RUNBOOK.md`](HOMEKIT_RUNBOOK.md).
+
 ### Local patch summary
 
 The local commits that matter for the Roller Shade flow are:
@@ -76,14 +80,14 @@ The local commits that matter for the Roller Shade flow are:
     log clearly shows whether the plugin command returned `true`, `false`, or an
     object result.
 
-- This commit: Roller Shade numeric OpenAPI commands
+- `a7cad25 Send roller shade positions as numeric API commands`
   - Routes Roller Shade `open`, `close`, and `setPosition` through direct
     OpenAPI calls when the device has API support.
   - Uses numeric `setPosition` parameters (`0` open, `100` closed) for Roller
     Shade instead of the Curtain parameter string format (`0,ff,position`).
   - Keeps a fallback to the upstream device methods for BLE-only cases.
 
-- This commit: responsive momentary command switches
+- `ec974ae Make blind command switches momentary`
   - `Blind Up` and `Blind Down` now expose a short visible `On` state before
     automatically returning to `Off`.
   - The momentary `On` window is intentionally short, currently about 1.2s.
@@ -165,6 +169,11 @@ active, the plugin sends `pause`. This applies to either direction switch; press
 again after the switch auto-resets if the intended next action is to reverse
 direction.
 
+Apple Home/Aqara automation gotcha: the action inside `Single Press` must be
+`Turn On` for the target command switch. The row can show
+`Single Press -> Blind Down` while the detail action is still effectively `Off`;
+in that case the plugin ignores the write and no command is logged.
+
 If Apple Home shows duplicate `Blind Up`, `Blind Down`, or `Roller Shade E3`
 tiles, first check Homebridge's cached accessories before removing bridges from
 Apple Home. During the original debugging, Homebridge cache had one command
@@ -194,7 +203,7 @@ Copy and install through that tunnel:
 ```bash
 scp -P 2222 \
   /tmp/switchbot-homebridge-switchbot-5.0.4.tgz \
-  pi@127.0.0.1:/tmp/switchbot-homebridge-switchbot-5.0.4.tgz
+  pi@127.0.0.1:/var/lib/homebridge/local-packages/switchbot-homebridge-switchbot-5.0.4-codex-momentary.tgz
 
 ssh -p 2222 pi@127.0.0.1
 ```
@@ -213,7 +222,8 @@ cp /var/lib/homebridge/package-lock.json "$backup/package-lock.json" 2>/dev/null
 Then install the fork package:
 
 ```bash
-npm install /tmp/switchbot-homebridge-switchbot-5.0.4.tgz --save --prefix /var/lib/homebridge
+cd /var/lib/homebridge
+npm install ./local-packages/switchbot-homebridge-switchbot-5.0.4-codex-momentary.tgz --save
 sudo setcap cap_net_raw+eip /opt/homebridge/bin/node
 sudo hb-service restart
 sleep 18
@@ -227,6 +237,9 @@ Expected final checks:
 - `npm pkg get version` from
   `/var/lib/homebridge/node_modules/@switchbot/homebridge-switchbot` prints
   `"5.0.4"`.
+- `/var/lib/homebridge/package.json` points to
+  `file:local-packages/switchbot-homebridge-switchbot-5.0.4-codex-momentary.tgz`
+  for `@switchbot/homebridge-switchbot`.
 - `sudo /usr/sbin/getcap /opt/homebridge/bin/node` prints
   `/opt/homebridge/bin/node cap_net_raw=eip`.
 
