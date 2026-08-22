@@ -45,11 +45,11 @@ describe('curtain hold position', () => {
 
     const accessory = rollerShade.createHAPAccessory({})
     const switches = accessory.services.filter((service: any) => service.type === 'Switch')
-    const up = switches.find((service: any) => service.subtype === 'shade-up')
-    const down = switches.find((service: any) => service.subtype === 'shade-down')
+    const up = switches.find((service: any) => service.subtype === 'blind-up-command')
+    const down = switches.find((service: any) => service.subtype === 'blind-down-command')
 
-    expect(up?.name).toBe('Office Blind Up')
-    expect(down?.name).toBe('Office Blind Down')
+    expect(up?.name).toBe('Blind Up')
+    expect(down?.name).toBe('Blind Down')
 
     await up.characteristics.On.set(true)
     await up.characteristics.On.set(true)

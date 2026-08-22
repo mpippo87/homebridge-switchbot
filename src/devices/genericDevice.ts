@@ -593,8 +593,8 @@ export class CurtainDevice extends GenericDevice {
         },
         {
           type: 'Switch',
-          name: `${this.opts.name ?? this.opts.type} Up`,
-          subtype: 'shade-up',
+          name: 'Blind Up',
+          subtype: 'blind-up-command',
           characteristics: {
             On: {
               get: async () => false,
@@ -609,8 +609,8 @@ export class CurtainDevice extends GenericDevice {
         },
         {
           type: 'Switch',
-          name: `${this.opts.name ?? this.opts.type} Down`,
-          subtype: 'shade-down',
+          name: 'Blind Down',
+          subtype: 'blind-down-command',
           characteristics: {
             On: {
               get: async () => false,

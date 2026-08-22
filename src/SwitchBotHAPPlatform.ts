@@ -266,18 +266,22 @@ export class SwitchBotHAPPlatform {
         // Add basic service descriptor from device (symmetrical to Matter: remove stale services/chars)
         const accDesc = await created.createAccessory?.(this.api)
         if (accDesc && accDesc.services) {
-          const serviceTypes = accDesc.services.map((s: any) => s.type)
+          const serviceDescriptors = accDesc.services
+            .map((s: any) => {
+              const Service = (hap.Service as any)[s.type]
+              return Service ? { subtype: s.subtype, type: s.type, uuid: Service.UUID } : undefined
+            })
+            .filter(Boolean)
           for (const existingService of accessory.services.slice()) {
             const isAccessoryInformation = hap.Service.AccessoryInformation
               && existingService.UUID === hap.Service.AccessoryInformation.UUID
-            const isDescriptorService = serviceTypes.some((serviceType: string) => {
-              const Service = (hap.Service as any)[serviceType]
-              return Service && existingService.UUID === Service.UUID
+            const isDescriptorService = serviceDescriptors.some((service: any) => {
+              if (existingService.UUID !== service.uuid) {
+                return false
+              }
+              return service.subtype ? existingService.subtype === service.subtype : !existingService.subtype
             })
             if (!isAccessoryInformation
-              && existingService.constructor
-              && existingService.constructor.name
-              && !serviceTypes.includes(existingService.constructor.name)
               && !isDescriptorService) {
               accessory.removeService(existingService)
             }
