@@ -36,6 +36,36 @@ describe('curtain hold position', () => {
     expect(pause).toHaveBeenCalledOnce()
   })
 
+  it('should send Roller Shade OpenAPI positions as numeric parameters', async () => {
+    const sendAPICommand = vi.fn().mockResolvedValue({ success: true })
+    const setPosition = vi.fn()
+    const handler = getDeviceCommandHandler('roller shade', 'setPosition')
+
+    const result = await handler?.({
+      hasAPI: () => true,
+      sendAPICommand,
+      setPosition,
+    }, { parameter: '50' })
+
+    expect(result).toBe(true)
+    expect(sendAPICommand).toHaveBeenCalledWith('setPosition', 50)
+    expect(setPosition).not.toHaveBeenCalled()
+  })
+
+  it('should fall back to the Roller Shade device method when OpenAPI is unavailable', async () => {
+    const setPosition = vi.fn().mockResolvedValue(true)
+    const handler = getDeviceCommandHandler('roller shade', 'setPosition')
+
+    const result = await handler?.({
+      hasAPI: () => false,
+      sendAPICommand: vi.fn(),
+      setPosition,
+    }, { parameter: '75' })
+
+    expect(result).toBe(true)
+    expect(setPosition).toHaveBeenCalledWith(75)
+  })
+
   it('should expose momentary up/down switches that pause on a second press while moving', async () => {
     const client = { setDeviceState: vi.fn().mockResolvedValue({ status: 'success' }) }
     const rollerShade = new RollerShadeDevice(

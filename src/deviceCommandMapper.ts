@@ -14,6 +14,22 @@ export interface DeviceTypeCommandMap {
   [deviceType: string]: DeviceCommandMap
 }
 
+function clampRollerShadePosition(position: any): number {
+  const parsed = Number(position)
+  if (!Number.isFinite(parsed)) {
+    return 0
+  }
+  return Math.max(0, Math.min(100, Math.round(parsed)))
+}
+
+async function sendRollerShadeAPICommand(device: any, command: string, parameter: any, fallback: () => Promise<any>): Promise<any> {
+  if (typeof device?.sendAPICommand === 'function' && device?.hasAPI?.()) {
+    const result = await device.sendAPICommand(command, parameter)
+    return typeof result?.success === 'boolean' ? result.success : result
+  }
+  return fallback()
+}
+
 export const deviceTypeCommandMap: DeviceTypeCommandMap = {
   // SwitchBot AI Hub (read-only/generic)
   'ai hub': {},
@@ -221,10 +237,13 @@ export const deviceTypeCommandMap: DeviceTypeCommandMap = {
   },
   // SwitchBot Roller Shade
   'roller shade': {
-    open: async device => device.open(),
-    close: async device => device.close(),
-    pause: async device => device.pause(),
-    setPosition: async (device, body) => device.setPosition(body?.parameter),
+    open: async device => sendRollerShadeAPICommand(device, 'setPosition', 0, () => device.open()),
+    close: async device => sendRollerShadeAPICommand(device, 'setPosition', 100, () => device.close()),
+    pause: async device => sendRollerShadeAPICommand(device, 'pause', 'default', () => device.pause()),
+    setPosition: async (device, body) => {
+      const position = clampRollerShadePosition(body?.parameter)
+      return sendRollerShadeAPICommand(device, 'setPosition', position, () => device.setPosition(position))
+    },
   },
   // SwitchBot Plug
   'plug': {

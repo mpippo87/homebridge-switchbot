@@ -76,6 +76,13 @@ The local commits that matter for the Roller Shade flow are:
     log clearly shows whether the plugin command returned `true`, `false`, or an
     object result.
 
+- This commit: Roller Shade numeric OpenAPI commands
+  - Routes Roller Shade `open`, `close`, and `setPosition` through direct
+    OpenAPI calls when the device has API support.
+  - Uses numeric `setPosition` parameters (`0` open, `100` closed) for Roller
+    Shade instead of the Curtain parameter string format (`0,ff,position`).
+  - Keeps a fallback to the upstream device methods for BLE-only cases.
+
 ### Why the Roller Shade patch exists
 
 During debugging, the plugin command path was proven to reach `node-switchbot`,
@@ -98,6 +105,25 @@ The relevant failure was in the device object returned by `node-switchbot`:
 The fork now hydrates discovered and managed device instances before command
 dispatch and sets Roller Shade devices to prefer `api` when an API client is
 available.
+
+A second Roller Shade issue was found after the UI was cleaned up: command logs
+showed `Command result: true`, but the shade did not move. The SwitchBot OpenAPI
+documentation for `Roller Shade` defines `setPosition` as a direct `0~100`
+numeric parameter. The upstream `node-switchbot` Roller Shade class inherits
+Curtain command formatting and sends `0,ff,position`, which the API can accept
+without physically moving the Roller Shade. This fork bypasses that inherited
+format for Roller Shade API commands.
+
+Verified on the target Pi:
+
+- Before: `slidePosition: 51`.
+- Plugin command: `setPosition` with target `41`.
+- After: `slidePosition: 41`.
+- Result: `PLUGIN_COMMAND true`.
+
+The same session also verified that OpenAPI `pause` can stop the moving Roller
+Shade, even though the public Roller Shade command table only documents
+`setPosition`.
 
 ### Expected HomeKit behaviour
 
@@ -196,6 +222,7 @@ Run this on the Pi:
 cd /var/lib/homebridge/node_modules/@switchbot/homebridge-switchbot
 npm pkg get version
 grep -n "hydrateDeviceConnections\|getOpenApiToken\|setPreferredConnection('api')" dist/switchbotClient.js
+grep -n "sendRollerShadeAPICommand\|clampRollerShadePosition" dist/deviceCommandMapper.js
 grep -n "Blind Up\|Blind Down\|Command result" dist/devices/genericDevice.js
 ```
 
@@ -204,6 +231,8 @@ The fork is still installed if:
 - version is `5.0.4`;
 - `hydrateDeviceConnections` exists in `dist/switchbotClient.js`;
 - `getOpenApiToken` exists in `dist/switchbotClient.js`;
+- `sendRollerShadeAPICommand` exists in `dist/deviceCommandMapper.js`;
+- `clampRollerShadePosition` exists in `dist/deviceCommandMapper.js`;
 - `Blind Up`, `Blind Down`, and `Command result` exist in
   `dist/devices/genericDevice.js`.
 
