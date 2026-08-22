@@ -267,10 +267,17 @@ export class SwitchBotHAPPlatform {
                 if (accDesc && accDesc.services) {
                     const serviceTypes = accDesc.services.map((s) => s.type);
                     for (const existingService of accessory.services.slice()) {
-                        // Never remove AccessoryInformation - required for cache deserialization
-                        if (existingService.constructor && existingService.constructor.name
-                            && existingService.constructor.name !== 'AccessoryInformation'
-                            && !serviceTypes.includes(existingService.constructor.name)) {
+                        const isAccessoryInformation = hap.Service.AccessoryInformation
+                            && existingService.UUID === hap.Service.AccessoryInformation.UUID;
+                        const isDescriptorService = serviceTypes.some((serviceType) => {
+                            const Service = hap.Service[serviceType];
+                            return Service && existingService.UUID === Service.UUID;
+                        });
+                        if (!isAccessoryInformation
+                            && existingService.constructor
+                            && existingService.constructor.name
+                            && !serviceTypes.includes(existingService.constructor.name)
+                            && !isDescriptorService) {
                             accessory.removeService(existingService);
                         }
                     }
@@ -281,8 +288,11 @@ export class SwitchBotHAPPlatform {
                         }
                         const service = accessory.getService(Service) || accessory.addService(Service);
                         const charNames = Object.keys(s.characteristics || {});
+                        const charUUIDs = charNames
+                            .map(charName => hap.Characteristic[charName]?.UUID)
+                            .filter(Boolean);
                         for (const existingChar of service.characteristics.slice()) {
-                            if (!charNames.includes(existingChar.displayName)) {
+                            if (!charUUIDs.includes(existingChar.UUID)) {
                                 service.removeCharacteristic(existingChar);
                             }
                         }
