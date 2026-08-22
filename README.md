@@ -14,6 +14,310 @@
 
 </span>
 
+## Private fork maintenance notes
+
+This repository is a private operational fork used for a Homebridge Raspberry Pi
+installation. Keep these notes near the top of the README so future upstream
+updates do not accidentally erase the local behaviour that makes the current
+HomeKit setup work.
+
+Current target installation:
+
+- Host: Raspberry Pi 4 running the Homebridge Raspberry Pi image.
+- Homebridge storage path: `/var/lib/homebridge`.
+- Homebridge config path: `/var/lib/homebridge/config.json`.
+- Homebridge Node runtime: `/opt/homebridge/bin/node`.
+- Service: `homebridge`; `sudo hb-service restart` is available and works.
+- SwitchBot device under active maintenance: `Roller Shade E3`.
+- SwitchBot device id: `B0E9FEF6A7E3`.
+- SwitchBot device type in config: `Roller Shade`.
+- Fork branch used on the Pi: `roller-shade-hold-position`.
+- Installed package version on the Pi after the local fixes: `@switchbot/homebridge-switchbot@5.0.4`.
+
+Important: this fork is intentionally installed from a packed tarball, not from
+the public npm package. Installing or updating `@switchbot/homebridge-switchbot`
+from the Homebridge UI or npm registry can overwrite these local patches.
+
+### Local patch summary
+
+The local commits that matter for the Roller Shade flow are:
+
+- `2543af9 Fix HAP accessory sync by UUID`
+  - Fixes HAP accessory restore/sync so stale Homebridge cached accessories do
+    not lose required services such as `AccessoryInformation`.
+  - This addressed the earlier `HAP API not available to register accessories`
+    and bad accessory-cache behaviour seen with the 5.x stack.
+
+- `cc714bc Add momentary blind direction controls`
+  - Adds command controls for blind up/down behaviour.
+  - A press starts movement; pressing again while movement is considered active
+    sends `pause`.
+
+- `cb5209d Rename blind command switches`
+  - Renames the command switches to clear HomeKit names: `Blind Up` and
+    `Blind Down`.
+
+- `72c173f Expose blind commands as accessories`
+  - Exposes `Blind Up` and `Blind Down` as separate Homebridge accessories
+    instead of extra services inside the Roller Shade accessory.
+  - This makes Apple Home automation easier because Aqara buttons can target
+    distinct command accessories.
+
+- `9923078 Prefer API commands for roller shade`
+  - Normalises OpenAPI credentials from both `openApiToken/openApiSecret` and
+    `credentials.token/credentials.secret`.
+  - Hydrates `node-switchbot` device instances with the API client when upstream
+    discovery creates API-capable devices without wiring the API client into the
+    device instance.
+  - Forces `Roller Shade` command routing to prefer OpenAPI when available.
+  - This is important because BLE on the Pi has been unreliable for this device,
+    while OpenAPI status and `pause` commands returned success.
+  - Adds command-result logging for `Blind Up` and `Blind Down`, so the Homebridge
+    log clearly shows whether the plugin command returned `true`, `false`, or an
+    object result.
+
+### Why the Roller Shade patch exists
+
+During debugging, the plugin command path was proven to reach `node-switchbot`,
+but `device.setPosition(...)` returned `false`. Direct SwitchBot OpenAPI tests
+from the Pi succeeded:
+
+- `getStatus` returned the Roller Shade status, including battery, calibration,
+  `slidePosition`, `moving`, and `hubDeviceId`.
+- `pause` returned `statusCode: 100` and `message: "success"`.
+
+The relevant failure was in the device object returned by `node-switchbot`:
+
+- API-only discovery found the Roller Shade.
+- The discovered device had `connectionTypes: ["api"]`.
+- Before the patch, `device.hasAPI()` still returned `false` because the API
+  client was not attached to the device instance.
+- As a result, plugin commands could fall back into BLE failure instead of using
+  the working cloud command path.
+
+The fork now hydrates discovered and managed device instances before command
+dispatch and sets Roller Shade devices to prefer `api` when an API client is
+available.
+
+### Expected HomeKit behaviour
+
+The Roller Shade is exposed as the normal HomeKit window covering accessory.
+The fork also creates two extra momentary switch accessories:
+
+- `Blind Up`
+- `Blind Down`
+
+The expected user flow is:
+
+- Press `Blind Up`: move the Roller Shade toward open.
+- Press `Blind Up` again while movement is active: send `pause`.
+- Press `Blind Down`: move the Roller Shade toward closed.
+- Press `Blind Down` again while movement is active: send `pause`.
+
+These switches are intended to be targets for separate Aqara button automations
+in Apple Home. For example:
+
+- Aqara button 1 single press -> turn on `Blind Down`.
+- Aqara button 2 single press -> turn on `Blind Up`.
+
+The switches are momentary from the plugin side: their `On` getter returns
+`false`, so HomeKit should not treat them as durable on/off state.
+
+If Apple Home shows duplicate `Blind Up`, `Blind Down`, or `Roller Shade E3`
+tiles, first check Homebridge's cached accessories before removing bridges from
+Apple Home. During the original debugging, Homebridge cache had one command
+accessory of each type, while Apple Home still showed stale duplicated services.
+That points to Apple Home cache residue, not necessarily plugin duplication.
+
+### Raspberry Pi install workflow
+
+From the Mac, build and pack this fork:
+
+```bash
+cd /Users/filippominelle/Documents/Xcode/homebridge/homebridge-switchbot-patched
+npm run build
+npm test -- --run test/client/switchbotClient.spec.ts test/device/curtain-hold-position.spec.ts test/platform/accessory-restore.spec.ts
+npm pack --pack-destination /tmp
+```
+
+Copy the tarball through the SSH tunnel or directly to the Pi. In the original
+Work session the tunnel was:
+
+```bash
+ssh -N -L 2222:127.0.0.1:22 pi@homebridge.local
+```
+
+Copy and install through that tunnel:
+
+```bash
+scp -P 2222 \
+  /tmp/switchbot-homebridge-switchbot-5.0.4.tgz \
+  pi@127.0.0.1:/tmp/switchbot-homebridge-switchbot-5.0.4.tgz
+
+ssh -p 2222 pi@127.0.0.1
+```
+
+On the Pi, always make a backup before installing:
+
+```bash
+stamp=$(date +%Y%m%d-%H%M%S)
+backup=/var/lib/homebridge/backups/codex-$stamp
+mkdir -p "$backup"
+cp /var/lib/homebridge/config.json "$backup/config.json"
+cp /var/lib/homebridge/package.json "$backup/package.json" 2>/dev/null || true
+cp /var/lib/homebridge/package-lock.json "$backup/package-lock.json" 2>/dev/null || true
+```
+
+Then install the fork package:
+
+```bash
+npm install /tmp/switchbot-homebridge-switchbot-5.0.4.tgz --save --prefix /var/lib/homebridge
+sudo setcap cap_net_raw+eip /opt/homebridge/bin/node
+sudo hb-service restart
+sleep 18
+systemctl is-active homebridge
+sudo /usr/sbin/getcap /opt/homebridge/bin/node
+```
+
+Expected final checks:
+
+- `systemctl is-active homebridge` prints `active`.
+- `npm pkg get version` from
+  `/var/lib/homebridge/node_modules/@switchbot/homebridge-switchbot` prints
+  `"5.0.4"`.
+- `sudo /usr/sbin/getcap /opt/homebridge/bin/node` prints
+  `/opt/homebridge/bin/node cap_net_raw=eip`.
+
+### Checking whether an update overwrote the fork
+
+Run this on the Pi:
+
+```bash
+cd /var/lib/homebridge/node_modules/@switchbot/homebridge-switchbot
+npm pkg get version
+grep -n "hydrateDeviceConnections\|getOpenApiToken\|setPreferredConnection('api')" dist/switchbotClient.js
+grep -n "Blind Up\|Blind Down\|Command result" dist/devices/genericDevice.js
+```
+
+The fork is still installed if:
+
+- version is `5.0.4`;
+- `hydrateDeviceConnections` exists in `dist/switchbotClient.js`;
+- `getOpenApiToken` exists in `dist/switchbotClient.js`;
+- `Blind Up`, `Blind Down`, and `Command result` exist in
+  `dist/devices/genericDevice.js`.
+
+If those strings are missing, reinstall the tarball from this fork.
+
+### Useful diagnostics
+
+Check Homebridge service health:
+
+```bash
+systemctl is-active homebridge
+sudo journalctl -u homebridge -n 200 --no-pager
+```
+
+Filter SwitchBot-related logs:
+
+```bash
+sudo journalctl -u homebridge -n 300 --no-pager \
+  | grep -iE "SwitchBot|Roller Shade|Blind Up|Blind Down|Command result|noble|bluetooth|error|warn"
+```
+
+Good command logs look like:
+
+```text
+[Blind Up] Command requested
+[Blind Up] Command result: true
+```
+
+or:
+
+```text
+[Blind Down] Command requested
+[Blind Down] Command result: true
+```
+
+If the command result is `false`, test the OpenAPI path directly before changing
+HomeKit automations. Use the real token/secret from `config.json`, but do not
+paste them into issues or logs.
+
+Check the Homebridge cached accessories for the Roller Shade and command
+switches:
+
+```bash
+/opt/homebridge/bin/node -e '
+const fs = require("fs");
+const arr = JSON.parse(fs.readFileSync("/var/lib/homebridge/accessories/cachedAccessories", "utf8"));
+console.log(JSON.stringify(arr.filter(x =>
+  x?.context?.deviceId === "B0E9FEF6A7E3" ||
+  x?.context?.parentDeviceId === "B0E9FEF6A7E3"
+).map(a => ({
+  displayName: a.displayName,
+  context: a.context,
+  services: (a.services || []).map(s => ({
+    displayName: s.displayName,
+    UUID: s.UUID
+  }))
+})), null, 2));
+'
+```
+
+Expected accessory names:
+
+- `Roller Shade E3`
+- `Blind Up`
+- `Blind Down`
+
+### BLE notes for Raspberry Pi
+
+BLE has been unreliable in the observed setup. Symptoms included:
+
+- `BLE adapter not ready`
+- repeated `noble warning: unknown handle 64 disconnected!`
+- direct Noble discovery/connection issues even when `bluetoothctl` could see
+  the device
+
+Keep the Linux capability on the Homebridge Node runtime anyway:
+
+```bash
+sudo setcap cap_net_raw+eip /opt/homebridge/bin/node
+sudo /usr/sbin/getcap /opt/homebridge/bin/node
+```
+
+If BLE remains noisy but Roller Shade OpenAPI commands work, prefer fixing the
+Roller Shade through OpenAPI as this fork does. Do not spend time removing the
+Apple Home bridge until Homebridge logs prove the plugin is registering duplicate
+accessories.
+
+### Update and merge strategy
+
+When pulling upstream changes:
+
+1. Create a branch from the current fork branch.
+2. Merge or rebase upstream.
+3. Re-check these files carefully:
+   - `src/switchbotClient.ts`
+   - `src/switchbotClient.js`
+   - `src/devices/genericDevice.ts`
+   - `src/deviceCommandMapper.ts`
+   - `src/SwitchBotHAPPlatform.ts`
+   - `dist/switchbotClient.js`
+   - `dist/devices/genericDevice.js`
+4. Re-run the focused tests:
+
+```bash
+npm run build
+npm test -- --run test/client/switchbotClient.spec.ts test/device/curtain-hold-position.spec.ts test/platform/accessory-restore.spec.ts
+```
+
+5. Pack, install on the Pi, reapply Node capability, and restart Homebridge.
+6. Test through Homebridge first, then Apple Home.
+
+Do not assume a green install from the Homebridge UI means the fork behaviour is
+still present. Always grep for the fork-specific strings listed above.
+
 ## Installation
 
 1. Search for "SwitchBot" on the plugin screen of [Homebridge Config UI X](https://github.com/oznu/homebridge-config-ui-x)
