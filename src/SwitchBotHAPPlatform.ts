@@ -341,6 +341,17 @@ export class SwitchBotHAPPlatform {
                       this.log.debug?.(`Failed to refresh ${refreshCharName} after setting ${charName}`, e)
                     }
                   }
+
+                  const autoResetAfterMs = Number(getterSetter.autoResetAfterMs)
+                  if (Number.isFinite(autoResetAfterMs) && autoResetAfterMs > 0) {
+                    setTimeout(async () => {
+                      try {
+                        service.getCharacteristic(Characteristic).updateValue(await getterSetter.get())
+                      } catch (e) {
+                        this.log.debug?.(`Failed to auto-reset ${charName}`, e)
+                      }
+                    }, autoResetAfterMs)
+                  }
                 })
               }
             }
@@ -445,6 +456,17 @@ export class SwitchBotHAPPlatform {
                       } catch (e) {
                         this.log.debug?.(`Failed to refresh ${refreshCharName} after setting ${charName}`, e)
                       }
+                    }
+
+                    const autoResetAfterMs = Number(getterSetter.autoResetAfterMs)
+                    if (Number.isFinite(autoResetAfterMs) && autoResetAfterMs > 0) {
+                      setTimeout(async () => {
+                        try {
+                          service.getCharacteristic(Characteristic).updateValue(await getterSetter.get())
+                        } catch (e) {
+                          this.log.debug?.(`Failed to auto-reset ${charName}`, e)
+                        }
+                      }, autoResetAfterMs)
                     }
                   })
                 }

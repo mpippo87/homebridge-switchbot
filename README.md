@@ -83,6 +83,16 @@ The local commits that matter for the Roller Shade flow are:
     Shade instead of the Curtain parameter string format (`0,ff,position`).
   - Keeps a fallback to the upstream device methods for BLE-only cases.
 
+- This commit: responsive momentary command switches
+  - `Blind Up` and `Blind Down` now expose a short visible `On` state before
+    automatically returning to `Off`.
+  - The momentary `On` window is intentionally short, currently about 1.2s.
+  - This gives Homebridge and Apple Home a real `off -> on -> off` transition
+    instead of a switch that always reads as `Off`.
+  - Command switches now send movement commands immediately without first waiting
+    for a position refresh. This makes button presses feel more responsive and
+    avoids stale position reads preventing a command.
+
 ### Why the Roller Shade patch exists
 
 During debugging, the plugin command path was proven to reach `node-switchbot`,
@@ -147,7 +157,13 @@ in Apple Home. For example:
 - Aqara button 2 single press -> turn on `Blind Up`.
 
 The switches are momentary from the plugin side: their `On` getter returns
-`false`, so HomeKit should not treat them as durable on/off state.
+`true` only during a short command window, then returns `false`. HomeKit should
+not treat them as durable on/off state.
+
+If a command switch is pressed while a movement command is still considered
+active, the plugin sends `pause`. This applies to either direction switch; press
+again after the switch auto-resets if the intended next action is to reverse
+direction.
 
 If Apple Home shows duplicate `Blind Up`, `Blind Down`, or `Roller Shade E3`
 tiles, first check Homebridge's cached accessories before removing bridges from
@@ -223,7 +239,8 @@ cd /var/lib/homebridge/node_modules/@switchbot/homebridge-switchbot
 npm pkg get version
 grep -n "hydrateDeviceConnections\|getOpenApiToken\|setPreferredConnection('api')" dist/switchbotClient.js
 grep -n "sendRollerShadeAPICommand\|clampRollerShadePosition" dist/deviceCommandMapper.js
-grep -n "Blind Up\|Blind Down\|Command result" dist/devices/genericDevice.js
+grep -n "commandMoveOrPause\|autoResetAfterMs\|Blind Up\|Blind Down\|Command result" dist/devices/genericDevice.js
+grep -n "autoResetAfterMs" dist/SwitchBotHAPPlatform.js
 ```
 
 The fork is still installed if:
@@ -233,6 +250,9 @@ The fork is still installed if:
 - `getOpenApiToken` exists in `dist/switchbotClient.js`;
 - `sendRollerShadeAPICommand` exists in `dist/deviceCommandMapper.js`;
 - `clampRollerShadePosition` exists in `dist/deviceCommandMapper.js`;
+- `commandMoveOrPause` and `autoResetAfterMs` exist in
+  `dist/devices/genericDevice.js`;
+- `autoResetAfterMs` exists in `dist/SwitchBotHAPPlatform.js`;
 - `Blind Up`, `Blind Down`, and `Command result` exist in
   `dist/devices/genericDevice.js`.
 

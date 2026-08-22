@@ -77,6 +77,7 @@ export declare class CurtainDevice extends GenericDevice {
     private isMotionCommandActive;
     private pauseMotion;
     private moveOrPause;
+    private commandMoveOrPause;
     private getPositionForHomeKit;
     createHAPAccessory(api: any): {
         services: {
@@ -109,6 +110,7 @@ export declare class CurtainDevice extends GenericDevice {
                         get: () => Promise<boolean>;
                         set: (v: any) => Promise<void>;
                         refreshAfterSet: string[];
+                        autoResetAfterMs: number;
                     };
                 };
             }[];

@@ -539,6 +539,21 @@ export class CurtainDevice extends GenericDevice {
     return result
   }
 
+  private async commandMoveOrPause(homeKitPosition: number): Promise<any> {
+    if (this.isMotionCommandActive()) {
+      return await this.pauseMotion()
+    }
+
+    const position = this.clampHomeKitPosition(homeKitPosition)
+    this.lastTargetPosition = position
+    this.positionState = position > this.lastKnownPosition ? 1 : position < this.lastKnownPosition ? 0 : 2
+    this.motionCommandUntil = Date.now() + this.motionCommandWindowMs
+    const result = await this.setState({ position: this.toSwitchBotPosition(position) })
+    this.lastKnownPosition = position
+    this.preferLocalPositionUntil = Date.now() + 30000
+    return result
+  }
+
   private async getPositionForHomeKit(): Promise<number> {
     if (Date.now() < this.preferLocalPositionUntil) {
       return this.lastKnownPosition
@@ -555,6 +570,10 @@ export class CurtainDevice extends GenericDevice {
   }
 
   createHAPAccessory(api: any) {
+    let blindUpCommandOnUntil = 0
+    let blindDownCommandOnUntil = 0
+    const commandOnMs = 1200
+
     return {
       services: [
         {
@@ -603,15 +622,19 @@ export class CurtainDevice extends GenericDevice {
               type: 'Switch',
               characteristics: {
                 On: {
-                  get: async () => false,
+                  get: async () => Date.now() < blindUpCommandOnUntil,
                   set: async (v: any) => {
                     if (v) {
+                      blindUpCommandOnUntil = Date.now() + commandOnMs
                       this.log.info('[Blind Up] Command requested')
-                      const result = await this.moveOrPause(100)
+                      const result = await this.commandMoveOrPause(100)
                       this.log.info('[Blind Up] Command result:', JSON.stringify(result))
+                    } else {
+                      blindUpCommandOnUntil = 0
                     }
                   },
                   refreshAfterSet: ['On'],
+                  autoResetAfterMs: commandOnMs,
                 },
               },
             },
@@ -625,15 +648,19 @@ export class CurtainDevice extends GenericDevice {
               type: 'Switch',
               characteristics: {
                 On: {
-                  get: async () => false,
+                  get: async () => Date.now() < blindDownCommandOnUntil,
                   set: async (v: any) => {
                     if (v) {
+                      blindDownCommandOnUntil = Date.now() + commandOnMs
                       this.log.info('[Blind Down] Command requested')
-                      const result = await this.moveOrPause(0)
+                      const result = await this.commandMoveOrPause(0)
                       this.log.info('[Blind Down] Command result:', JSON.stringify(result))
+                    } else {
+                      blindDownCommandOnUntil = 0
                     }
                   },
                   refreshAfterSet: ['On'],
+                  autoResetAfterMs: commandOnMs,
                 },
               },
             },
