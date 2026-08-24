@@ -129,6 +129,11 @@ export class GenericDevice extends DeviceBase {
     }
   }
 
+  protected configBoolean(key: string, fallback: boolean): boolean {
+    const value = this.opts?.[key] ?? this.opts?._raw?.[key] ?? this.cfg?.[key]
+    return typeof value === 'boolean' ? value : fallback
+  }
+
   /**
    * Subscribe to BLE notifications for this device (if supported by node-switchbot)
    * Logs unsolicited notifications and enables per-command notification futures.
@@ -574,126 +579,142 @@ export class CurtainDevice extends GenericDevice {
     let blindDownCommandOnUntil = 0
     let blindStopCommandOnUntil = 0
     const commandOnMs = 1200
+    const exposeWindowCovering = this.configBoolean('exposeWindowCovering', true)
+    const exposeBlindUp = this.configBoolean('exposeBlindUp', true)
+    const exposeBlindDown = this.configBoolean('exposeBlindDown', true)
+    const exposeBlindStop = this.configBoolean('exposeBlindStop', true)
 
-    return {
-      services: [
-        {
-          type: 'WindowCovering',
-          characteristics: {
-            CurrentPosition: {
-              get: async () => {
-                return this.getPositionForHomeKit()
+    const services = exposeWindowCovering
+      ? [
+          {
+            type: 'WindowCovering',
+            characteristics: {
+              CurrentPosition: {
+                get: async () => {
+                  return this.getPositionForHomeKit()
+                },
               },
-            },
-            PositionState: {
-              get: async () => this.positionState,
-            },
-            TargetPosition: {
-              get: async () => {
-                await this.getPositionForHomeKit()
-                return this.lastTargetPosition
+              PositionState: {
+                get: async () => this.positionState,
               },
-              set: async (v: any) => {
-                const position = this.clampHomeKitPosition(Number(v))
-                this.lastTargetPosition = position
-                this.positionState = position > this.lastKnownPosition ? 1 : position < this.lastKnownPosition ? 0 : 2
-                this.motionCommandUntil = this.positionState === 2 ? 0 : Date.now() + this.motionCommandWindowMs
-                await this.setState({ position: this.toSwitchBotPosition(position) })
-                this.lastKnownPosition = position
-                this.preferLocalPositionUntil = Date.now() + 30000
-                this.positionState = 2
+              TargetPosition: {
+                get: async () => {
+                  await this.getPositionForHomeKit()
+                  return this.lastTargetPosition
+                },
+                set: async (v: any) => {
+                  const position = this.clampHomeKitPosition(Number(v))
+                  this.lastTargetPosition = position
+                  this.positionState = position > this.lastKnownPosition ? 1 : position < this.lastKnownPosition ? 0 : 2
+                  this.motionCommandUntil = this.positionState === 2 ? 0 : Date.now() + this.motionCommandWindowMs
+                  await this.setState({ position: this.toSwitchBotPosition(position) })
+                  this.lastKnownPosition = position
+                  this.preferLocalPositionUntil = Date.now() + 30000
+                  this.positionState = 2
+                },
+                refreshAfterSet: ['CurrentPosition', 'TargetPosition', 'PositionState'],
               },
-              refreshAfterSet: ['CurrentPosition', 'TargetPosition', 'PositionState'],
-            },
-            HoldPosition: {
-              set: async () => {
-                await this.pauseMotion()
+              HoldPosition: {
+                set: async () => {
+                  await this.pauseMotion()
+                },
+                refreshAfterSet: ['PositionState'],
               },
-              refreshAfterSet: ['PositionState'],
             },
           },
-        },
-      ],
-      commandAccessories: [
-        {
-          id: 'blind-up-command',
-          name: 'Blind Up',
-          services: [
-            {
-              type: 'Switch',
-              characteristics: {
-                On: {
-                  get: async () => Date.now() < blindUpCommandOnUntil,
-                  set: async (v: any) => {
-                    if (v) {
-                      blindUpCommandOnUntil = Date.now() + commandOnMs
-                      this.log.info('[Blind Up] Command requested')
-                      const result = await this.commandMoveOrPause(100)
-                      this.log.info('[Blind Up] Command result:', JSON.stringify(result))
-                    } else {
-                      blindUpCommandOnUntil = 0
-                    }
+        ]
+      : []
+
+    const commandAccessories = [
+      exposeBlindUp
+        ? {
+            id: 'blind-up-command',
+            name: 'Blind Up',
+            services: [
+              {
+                type: 'Switch',
+                characteristics: {
+                  On: {
+                    get: async () => Date.now() < blindUpCommandOnUntil,
+                    set: async (v: any) => {
+                      if (v) {
+                        blindUpCommandOnUntil = Date.now() + commandOnMs
+                        this.log.info('[Blind Up] Command requested')
+                        const result = await this.commandMoveOrPause(100)
+                        this.log.info('[Blind Up] Command result:', JSON.stringify(result))
+                      } else {
+                        blindUpCommandOnUntil = 0
+                      }
+                    },
+                    refreshAfterSet: ['On'],
+                    autoResetAfterMs: commandOnMs,
                   },
-                  refreshAfterSet: ['On'],
-                  autoResetAfterMs: commandOnMs,
                 },
               },
-            },
-          ],
-        },
-        {
-          id: 'blind-down-command',
-          name: 'Blind Down',
-          services: [
-            {
-              type: 'Switch',
-              characteristics: {
-                On: {
-                  get: async () => Date.now() < blindDownCommandOnUntil,
-                  set: async (v: any) => {
-                    if (v) {
-                      blindDownCommandOnUntil = Date.now() + commandOnMs
-                      this.log.info('[Blind Down] Command requested')
-                      const result = await this.commandMoveOrPause(0)
-                      this.log.info('[Blind Down] Command result:', JSON.stringify(result))
-                    } else {
-                      blindDownCommandOnUntil = 0
-                    }
+            ],
+          }
+        : undefined,
+      exposeBlindDown
+        ? {
+            id: 'blind-down-command',
+            name: 'Blind Down',
+            services: [
+              {
+                type: 'Switch',
+                characteristics: {
+                  On: {
+                    get: async () => Date.now() < blindDownCommandOnUntil,
+                    set: async (v: any) => {
+                      if (v) {
+                        blindDownCommandOnUntil = Date.now() + commandOnMs
+                        this.log.info('[Blind Down] Command requested')
+                        const result = await this.commandMoveOrPause(0)
+                        this.log.info('[Blind Down] Command result:', JSON.stringify(result))
+                      } else {
+                        blindDownCommandOnUntil = 0
+                      }
+                    },
+                    refreshAfterSet: ['On'],
+                    autoResetAfterMs: commandOnMs,
                   },
-                  refreshAfterSet: ['On'],
-                  autoResetAfterMs: commandOnMs,
                 },
               },
-            },
-          ],
-        },
-        {
-          id: 'blind-stop-command',
-          name: 'Blind Stop',
-          services: [
-            {
-              type: 'Switch',
-              characteristics: {
-                On: {
-                  get: async () => Date.now() < blindStopCommandOnUntil,
-                  set: async (v: any) => {
-                    if (v) {
-                      blindStopCommandOnUntil = Date.now() + commandOnMs
-                      this.log.info('[Blind Stop] Command requested')
-                      const result = await this.pauseMotion()
-                      this.log.info('[Blind Stop] Command result:', JSON.stringify(result))
-                    } else {
-                      blindStopCommandOnUntil = 0
-                    }
+            ],
+          }
+        : undefined,
+      exposeBlindStop
+        ? {
+            id: 'blind-stop-command',
+            name: 'Blind Stop',
+            services: [
+              {
+                type: 'Switch',
+                characteristics: {
+                  On: {
+                    get: async () => Date.now() < blindStopCommandOnUntil,
+                    set: async (v: any) => {
+                      if (v) {
+                        blindStopCommandOnUntil = Date.now() + commandOnMs
+                        this.log.info('[Blind Stop] Command requested')
+                        const result = await this.pauseMotion()
+                        this.log.info('[Blind Stop] Command result:', JSON.stringify(result))
+                      } else {
+                        blindStopCommandOnUntil = 0
+                      }
+                    },
+                    refreshAfterSet: ['On'],
+                    autoResetAfterMs: commandOnMs,
                   },
-                  refreshAfterSet: ['On'],
-                  autoResetAfterMs: commandOnMs,
                 },
               },
-            },
-          ],
-        },
-      ],
+            ],
+          }
+        : undefined,
+    ].filter(Boolean)
+
+    return {
+      services,
+      commandAccessories,
     }
   }
 

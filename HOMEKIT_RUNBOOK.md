@@ -40,7 +40,7 @@ Decision rule:
 
 ## Current working state
 
-Date verified: 2026-08-22.
+Date verified: 2026-08-24.
 
 Host:
 
@@ -61,6 +61,7 @@ Current Homebridge platforms from `config.json`:
 - `LinakController` / `Linak Platform`
 - `HomebridgeDummy` / `Homebridge Dummy`
 - `DaikinCloud`
+- `RoborockVacuumPlatform` / `Roborock Vacuum`
 
 Current Homebridge package dependencies:
 
@@ -69,15 +70,14 @@ Current Homebridge package dependencies:
 - `homebridge-ysa2`
 - `homebridge-dummy`
 - `@mp-consulting/homebridge-daikin-cloud`
-- `homebridge-xiaomi-roborock-vacuum`
 - `homebridge`
 
 Current private/local package references:
 
 - `@switchbot/homebridge-switchbot` is installed from
-  `file:local-packages/switchbot-homebridge-switchbot-5.0.4-codex-stop.tgz`.
+  `file:local-packages/switchbot-homebridge-switchbot-5.0.4-patched.1.tgz`.
 - `homebridge-linak` is installed from
-  `file:local-packages/homebridge-linak-1.1.2-codex-ble-recovery.tgz`.
+  `file:local-packages/homebridge-linak-1.1.2-patched.1.tgz`.
 
 ## Current SwitchBot setup
 
@@ -88,7 +88,36 @@ Working device:
 - SwitchBot config type: `Roller Shade`.
 - Current fork branch: `roller-shade-hold-position`.
 
-HomeKit accessories created by the fork:
+Current HomeKit accessories created by the fork:
+
+- `Blind Stop`: momentary command switch.
+
+Current stop-only config:
+
+```json
+{
+  "preferMatter": false,
+  "enableMatter": false,
+  "devices": [
+    {
+      "deviceId": "B0E9FEF6A7E3",
+      "configDeviceName": "Roller Shade E3",
+      "configDeviceType": "Roller Shade",
+      "exposeWindowCovering": false,
+      "exposeBlindUp": false,
+      "exposeBlindDown": false,
+      "exposeBlindStop": true,
+      "exposeMatter": false
+    }
+  ]
+}
+```
+
+This deliberately leaves normal movement to the direct Apple Home/SwitchBot
+Matter accessory and exposes only the missing explicit stop action through
+Homebridge.
+
+Default/full HomeKit accessories supported by the fork:
 
 - `Roller Shade E3`: normal Window Covering accessory.
 - `Blind Down`: momentary command switch.
@@ -117,6 +146,7 @@ The current fork contains several operational fixes:
 - Roller Shade exposes a dedicated stop command accessory.
 - The command switches are momentary and visibly reset.
 - Roller Shade commands prefer OpenAPI when available.
+- Roller Shade HAP/Matter exposure is configurable per device.
 - `node-switchbot` device instances are hydrated with the API client when
   upstream discovery creates API-capable devices without wiring the API client.
 - Roller Shade `setPosition` is sent as a numeric OpenAPI parameter (`0..100`),
@@ -192,7 +222,7 @@ npm pack --pack-destination /tmp
 Expected tarball:
 
 ```text
-/tmp/switchbot-homebridge-switchbot-5.0.4.tgz
+/tmp/switchbot-homebridge-switchbot-5.0.4-patched.1.tgz
 ```
 
 ### 4. Copy the tarball to stable Homebridge storage
@@ -203,8 +233,8 @@ Use direct SSH or the tunnel. Tunnel example:
 ssh -p 2222 pi@127.0.0.1 'mkdir -p /var/lib/homebridge/local-packages'
 
 scp -P 2222 \
-  /tmp/switchbot-homebridge-switchbot-5.0.4.tgz \
-  pi@127.0.0.1:/var/lib/homebridge/local-packages/switchbot-homebridge-switchbot-5.0.4-codex-stop.tgz
+  /tmp/switchbot-homebridge-switchbot-5.0.4-patched.1.tgz \
+  pi@127.0.0.1:/var/lib/homebridge/local-packages/switchbot-homebridge-switchbot-5.0.4-patched.1.tgz
 ```
 
 Do not leave the Homebridge dependency pointing to `/tmp`. `/tmp` can be cleaned
@@ -216,7 +246,7 @@ Run on the Pi:
 
 ```bash
 cd /var/lib/homebridge
-npm install ./local-packages/switchbot-homebridge-switchbot-5.0.4-codex-stop.tgz --save
+npm install ./local-packages/switchbot-homebridge-switchbot-5.0.4-patched.1.tgz --save
 sudo setcap cap_net_raw+eip /opt/homebridge/bin/node
 sudo hb-service restart
 sleep 18
@@ -240,7 +270,7 @@ node -e 'const p=require("/var/lib/homebridge/package.json"); console.log(p.depe
 Expected:
 
 ```text
-file:local-packages/switchbot-homebridge-switchbot-5.0.4-codex-stop.tgz
+file:local-packages/switchbot-homebridge-switchbot-5.0.4-patched.1.tgz
 ```
 
 ### 6. Confirm the fork was not overwritten

@@ -32,7 +32,7 @@ Current target installation:
 - SwitchBot device id: `B0E9FEF6A7E3`.
 - SwitchBot device type in config: `Roller Shade`.
 - Fork branch used on the Pi: `roller-shade-hold-position`.
-- Installed package version on the Pi after the local fixes: `@switchbot/homebridge-switchbot@5.0.4`.
+- Installed package version on the Pi after the local fixes: `@switchbot/homebridge-switchbot@5.0.4-patched.1`.
 
 Important: this fork is intentionally installed from a packed tarball, not from
 the public npm package. Installing or updating `@switchbot/homebridge-switchbot`
@@ -97,12 +97,17 @@ The local commits that matter for the Roller Shade flow are:
     for a position refresh. This makes button presses feel more responsive and
     avoids stale position reads preventing a command.
 
-- Current untagged fork update: dedicated stop command
+- `5.0.4-patched.1`: configurable Roller Shade exposure
   - Adds a third momentary switch accessory named `Blind Stop`.
   - `Blind Stop` sends only the Roller Shade `pause` command.
   - This is intended for a hybrid Apple Home setup where Matter/Apple Home can
     handle normal up/down movement and Homebridge provides the missing explicit
     stop action.
+  - Adds per-device exposure flags:
+    `exposeWindowCovering`, `exposeBlindUp`, `exposeBlindDown`,
+    `exposeBlindStop`, and `exposeMatter`.
+  - The current target setup disables the Homebridge shade, up/down command
+    switches, and SwitchBot Matter publication, leaving only `Blind Stop`.
 
 ### Why the Roller Shade patch exists
 
@@ -148,8 +153,8 @@ Shade, even though the public Roller Shade command table only documents
 
 ### Expected HomeKit behaviour
 
-The Roller Shade is exposed as the normal HomeKit window covering accessory.
-The fork also creates three extra momentary switch accessories:
+The default behaviour still exposes the Roller Shade as the normal HomeKit
+window covering accessory and creates three extra momentary switch accessories:
 
 - `Blind Up`
 - `Blind Down`
@@ -175,6 +180,27 @@ For the hybrid Matter/Homebridge flow to test next:
   position movement;
 - use `Blind Stop` as the explicit Homebridge stop action when Apple Home reports
   the shade is already moving.
+- set the SwitchBot device config to expose only the stop command from
+  Homebridge:
+
+```json
+{
+  "exposeWindowCovering": false,
+  "exposeBlindUp": false,
+  "exposeBlindDown": false,
+  "exposeBlindStop": true,
+  "exposeMatter": false
+}
+```
+
+The platform-level SwitchBot config should also use HAP mode for this setup:
+
+```json
+{
+  "preferMatter": false,
+  "enableMatter": false
+}
+```
 
 The switches are momentary from the plugin side: their `On` getter returns
 `true` only during a short command window, then returns `false`. HomeKit should
@@ -218,8 +244,8 @@ Copy and install through that tunnel:
 
 ```bash
 scp -P 2222 \
-  /tmp/switchbot-homebridge-switchbot-5.0.4.tgz \
-  pi@127.0.0.1:/var/lib/homebridge/local-packages/switchbot-homebridge-switchbot-5.0.4-codex-stop.tgz
+  /tmp/switchbot-homebridge-switchbot-5.0.4-patched.1.tgz \
+  pi@127.0.0.1:/var/lib/homebridge/local-packages/switchbot-homebridge-switchbot-5.0.4-patched.1.tgz
 
 ssh -p 2222 pi@127.0.0.1
 ```
@@ -239,7 +265,7 @@ Then install the fork package:
 
 ```bash
 cd /var/lib/homebridge
-npm install ./local-packages/switchbot-homebridge-switchbot-5.0.4-codex-stop.tgz --save
+npm install ./local-packages/switchbot-homebridge-switchbot-5.0.4-patched.1.tgz --save
 sudo setcap cap_net_raw+eip /opt/homebridge/bin/node
 sudo hb-service restart
 sleep 18
@@ -252,9 +278,9 @@ Expected final checks:
 - `systemctl is-active homebridge` prints `active`.
 - `npm pkg get version` from
   `/var/lib/homebridge/node_modules/@switchbot/homebridge-switchbot` prints
-  `"5.0.4"`.
+  `"5.0.4-patched.1"`.
 - `/var/lib/homebridge/package.json` points to
-  `file:local-packages/switchbot-homebridge-switchbot-5.0.4-codex-stop.tgz`
+  `file:local-packages/switchbot-homebridge-switchbot-5.0.4-patched.1.tgz`
   for `@switchbot/homebridge-switchbot`.
 - `sudo /usr/sbin/getcap /opt/homebridge/bin/node` prints
   `/opt/homebridge/bin/node cap_net_raw=eip`.
@@ -274,7 +300,7 @@ grep -n "autoResetAfterMs" dist/SwitchBotHAPPlatform.js
 
 The fork is still installed if:
 
-- version is `5.0.4`;
+- version is `5.0.4-patched.1`;
 - `hydrateDeviceConnections` exists in `dist/switchbotClient.js`;
 - `getOpenApiToken` exists in `dist/switchbotClient.js`;
 - `sendRollerShadeAPICommand` exists in `dist/deviceCommandMapper.js`;
@@ -349,7 +375,11 @@ console.log(JSON.stringify(arr.filter(x =>
 '
 ```
 
-Expected accessory names:
+Expected accessory names in the current stop-only setup:
+
+- `Blind Stop`
+
+Expected accessory names when all Roller Shade HAP controls are enabled:
 
 - `Roller Shade E3`
 - `Blind Up`

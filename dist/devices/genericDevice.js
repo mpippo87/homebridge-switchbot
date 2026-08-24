@@ -87,6 +87,10 @@ export class GenericDevice extends DeviceBase {
             await super.destroy();
         }
     }
+    configBoolean(key, fallback) {
+        const value = this.opts?.[key] ?? this.opts?._raw?.[key] ?? this.cfg?.[key];
+        return typeof value === 'boolean' ? value : fallback;
+    }
     /**
      * Subscribe to BLE notifications for this device (if supported by node-switchbot)
      * Logs unsolicited notifications and enables per-command notification futures.
@@ -521,8 +525,12 @@ export class CurtainDevice extends GenericDevice {
         let blindDownCommandOnUntil = 0;
         let blindStopCommandOnUntil = 0;
         const commandOnMs = 1200;
-        return {
-            services: [
+        const exposeWindowCovering = this.configBoolean('exposeWindowCovering', true);
+        const exposeBlindUp = this.configBoolean('exposeBlindUp', true);
+        const exposeBlindDown = this.configBoolean('exposeBlindDown', true);
+        const exposeBlindStop = this.configBoolean('exposeBlindStop', true);
+        const services = exposeWindowCovering
+            ? [
                 {
                     type: 'WindowCovering',
                     characteristics: {
@@ -559,9 +567,11 @@ export class CurtainDevice extends GenericDevice {
                         },
                     },
                 },
-            ],
-            commandAccessories: [
-                {
+            ]
+            : [];
+        const commandAccessories = [
+            exposeBlindUp
+                ? {
                     id: 'blind-up-command',
                     name: 'Blind Up',
                     services: [
@@ -587,8 +597,10 @@ export class CurtainDevice extends GenericDevice {
                             },
                         },
                     ],
-                },
-                {
+                }
+                : undefined,
+            exposeBlindDown
+                ? {
                     id: 'blind-down-command',
                     name: 'Blind Down',
                     services: [
@@ -614,8 +626,10 @@ export class CurtainDevice extends GenericDevice {
                             },
                         },
                     ],
-                },
-                {
+                }
+                : undefined,
+            exposeBlindStop
+                ? {
                     id: 'blind-stop-command',
                     name: 'Blind Stop',
                     services: [
@@ -641,8 +655,12 @@ export class CurtainDevice extends GenericDevice {
                             },
                         },
                     ],
-                },
-            ],
+                }
+                : undefined,
+        ].filter(Boolean);
+        return {
+            services,
+            commandAccessories,
         };
     }
     // Matter-specific descriptor for Curtain (WindowCovering cluster) with new attributes

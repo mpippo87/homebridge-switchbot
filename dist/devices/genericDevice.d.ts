@@ -47,6 +47,7 @@ export declare class GenericDevice extends DeviceBase {
      * Clean up BLE polling timer on destroy.
      */
     destroy(): Promise<void>;
+    protected configBoolean(key: string, fallback: boolean): boolean;
     /**
      * Subscribe to BLE notifications for this device (if supported by node-switchbot)
      * Logs unsolicited notifications and enables per-command notification futures.
@@ -100,7 +101,7 @@ export declare class CurtainDevice extends GenericDevice {
                 };
             };
         }[];
-        commandAccessories: {
+        commandAccessories: ({
             id: string;
             name: string;
             services: {
@@ -114,7 +115,7 @@ export declare class CurtainDevice extends GenericDevice {
                     };
                 };
             }[];
-        }[];
+        } | undefined)[];
     };
     createMatterAccessory(api: any): Promise<any>;
 }

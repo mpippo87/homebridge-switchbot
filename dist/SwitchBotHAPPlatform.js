@@ -145,7 +145,7 @@ export class SwitchBotHAPPlatform {
                 _raw: raw,
             };
             const type = normalizeTypeForMatter(d.type);
-            const deviceOpts = { id: d.id, type, name: d.name, encryptionKey: d.encryptionKey, keyId: d.keyId, log: this.log };
+            const deviceOpts = { ...raw, id: d.id, type, name: d.name, encryptionKey: d.encryptionKey, keyId: d.keyId, log: this.log, _raw: raw };
             this.log.debug(`[HAP/Debug] Device options for ${d.name ?? d.id}:`, JSON.stringify(deviceOpts, null, 2));
             try {
                 const created = await createDevice(deviceOpts, this.config, false);
@@ -192,6 +192,7 @@ export class SwitchBotHAPPlatform {
             try {
                 const uuid = hap.uuid.generate(`${d.id}`);
                 let accessory = this.accessories.get(uuid);
+                let parentAccessoryWasNew = false;
                 if (!accessory) {
                     for (const [, a] of this.accessories.entries()) {
                         try {
@@ -207,6 +208,7 @@ export class SwitchBotHAPPlatform {
                 }
                 if (!accessory) {
                     accessory = new this.api.platformAccessory(d.name || type, uuid);
+                    parentAccessoryWasNew = true;
                     try {
                         accessory.context = accessory.context || {};
                         accessory.context.deviceId = d.id;
@@ -262,10 +264,30 @@ export class SwitchBotHAPPlatform {
                 catch (e) {
                     // ignore
                 }
-                // Add basic service descriptor from device (symmetrical to Matter: remove stale services/chars)
                 const accDesc = await created.createAccessory?.(this.api);
-                if (accDesc && accDesc.services) {
-                    const serviceDescriptors = accDesc.services
+                const services = Array.isArray(accDesc?.services) ? accDesc.services : [];
+                if (services.length === 0 && accessory) {
+                    try {
+                        if (parentAccessoryWasNew) {
+                            const index = accessoriesToRegister.indexOf(accessory);
+                            if (index >= 0) {
+                                accessoriesToRegister.splice(index, 1);
+                            }
+                            this.log.info(`Skipped HAP accessory ${d.id} (${type}) because no primary services are exposed`);
+                        }
+                        else {
+                            this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+                            this.log.info(`Unregistered HAP accessory ${d.id} (${type}) because no primary services are exposed`);
+                        }
+                        this.accessories.delete(accessory.UUID || uuid);
+                    }
+                    catch (e) {
+                        this.log.warn(`Failed to unregister HAP accessory ${d.id} (${type})`, e);
+                    }
+                }
+                // Add basic service descriptor from device (symmetrical to Matter: remove stale services/chars)
+                if (services.length > 0) {
+                    const serviceDescriptors = services
                         .map((s) => {
                         const Service = hap.Service[s.type];
                         return Service ? { subtype: s.subtype, type: s.type, uuid: Service.UUID } : undefined;
@@ -285,7 +307,7 @@ export class SwitchBotHAPPlatform {
                             accessory.removeService(existingService);
                         }
                     }
-                    for (const s of accDesc.services) {
+                    for (const s of services) {
                         const Service = hap.Service[s.type] || hap.Service[s.type];
                         if (!Service) {
                             continue;
@@ -357,8 +379,32 @@ export class SwitchBotHAPPlatform {
                         }
                     }
                 }
-                this.log.info(`Created/updated HAP accessory ${d.id} (${type})`);
+                if (services.length > 0) {
+                    this.log.info(`Created/updated HAP accessory ${d.id} (${type})`);
+                }
                 const commandAccessories = Array.isArray(accDesc?.commandAccessories) ? accDesc.commandAccessories : [];
+                const expectedCommandUuids = new Set(commandAccessories.map((commandAccessoryDesc) => {
+                    const commandId = String(commandAccessoryDesc.id || commandAccessoryDesc.name);
+                    return hap.uuid.generate(`${d.id}:${commandId}`);
+                }));
+                const staleCommandAccessories = [];
+                for (const [existingUuid, existingAccessory] of this.accessories.entries()) {
+                    if (existingAccessory?.context?.parentDeviceId === d.id && !expectedCommandUuids.has(existingUuid)) {
+                        staleCommandAccessories.push({ uuid: existingUuid, accessory: existingAccessory });
+                    }
+                }
+                if (staleCommandAccessories.length > 0) {
+                    try {
+                        this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, staleCommandAccessories.map(a => a.accessory));
+                        for (const { uuid: staleUuid } of staleCommandAccessories) {
+                            this.accessories.delete(staleUuid);
+                        }
+                        this.log.info(`Unregistered ${staleCommandAccessories.length} stale HAP command accessory(ies) for ${d.id}`);
+                    }
+                    catch (e) {
+                        this.log.warn(`Failed to unregister stale HAP command accessories for ${d.id}`, e);
+                    }
+                }
                 for (const commandAccessoryDesc of commandAccessories) {
                     try {
                         const commandId = String(commandAccessoryDesc.id || commandAccessoryDesc.name);
@@ -523,6 +569,10 @@ export class SwitchBotHAPPlatform {
             id: d.deviceId ?? d.id,
             type: d.configDeviceType ?? d.type,
             name: d.configDeviceName ?? d.name,
+            exposeWindowCovering: d.exposeWindowCovering,
+            exposeBlindUp: d.exposeBlindUp,
+            exposeBlindDown: d.exposeBlindDown,
+            exposeBlindStop: d.exposeBlindStop,
         })));
     }
     /**

@@ -194,6 +194,36 @@
               "description": "How often to poll this device via OpenAPI for status (in seconds). Overrides platform value if set. Default: 300 (5 minutes). Minimum: 30.",
               "default": 300,
               "minimum": 30
+            },
+            "exposeWindowCovering": {
+              "type": "boolean",
+              "title": "Expose HAP Window Covering",
+              "description": "Expose the Roller Shade/Curtain as a normal HomeKit window covering through Homebridge. Disable this when Apple Home already has the shade through native Matter/SwitchBot and Homebridge should only expose command switches.",
+              "default": true
+            },
+            "exposeBlindUp": {
+              "type": "boolean",
+              "title": "Expose Blind Up Command",
+              "description": "Expose the extra Homebridge command switch that moves the shade up or stops it when motion is already active.",
+              "default": true
+            },
+            "exposeBlindDown": {
+              "type": "boolean",
+              "title": "Expose Blind Down Command",
+              "description": "Expose the extra Homebridge command switch that moves the shade down or stops it when motion is already active.",
+              "default": true
+            },
+            "exposeBlindStop": {
+              "type": "boolean",
+              "title": "Expose Blind Stop Command",
+              "description": "Expose the extra Homebridge command switch that sends HoldPosition/stop to the shade.",
+              "default": true
+            },
+            "exposeMatter": {
+              "type": "boolean",
+              "title": "Expose Matter Accessory",
+              "description": "Expose this SwitchBot device through the Homebridge Matter bridge when Matter is available. Disable this when Apple Home already has the device through another Matter path.",
+              "default": true
             }
           }
         }

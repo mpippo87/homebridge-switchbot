@@ -125,12 +125,13 @@ export class SwitchBotMatterPlatform {
         _raw: raw,
       }
       const type: string = normalizeTypeForMatter(d.type)
-      const deviceOpts: any = { id: d.id, type, name: d.name, encryptionKey: d.encryptionKey, keyId: d.keyId, log: this.log }
+      const deviceOpts: any = { ...raw, id: d.id, type, name: d.name, encryptionKey: d.encryptionKey, keyId: d.keyId, log: this.log, _raw: raw }
       this.log.debug(`[Matter/Debug] Device options for ${d.name ?? d.id}:`, JSON.stringify(deviceOpts, null, 2))
       const matterSupported = !!DEVICE_MATTER_SUPPORTED[(type || '').toLowerCase()]
       const matterAvailable = !!(this.api?.isMatterAvailable?.() && this.api?.isMatterEnabled?.())
       const matterEnabled = matterAvailable || !!this.config.enableMatter
-      const useMatter = matterEnabled && matterSupported
+      const perDeviceMatterEnabled = raw.exposeMatter !== false
+      const useMatter = perDeviceMatterEnabled && matterEnabled && matterSupported
       try {
         const created = await createDevice(deviceOpts, this.config, useMatter)
         this.devices.push(created)
@@ -140,6 +141,8 @@ export class SwitchBotMatterPlatform {
         } else {
           if (!matterEnabled) {
             this.log.info(`Skipping Matter for ${d.id} (${type}) - Matter not available on this bridge`)
+          } else if (!perDeviceMatterEnabled) {
+            this.log.info(`Skipping Matter for ${d.id} (${type}) - disabled by device config`)
           } else if (!matterSupported) {
             this.log.info(`Skipping Matter for ${d.id} (${type}) - device type not supported`)
           } else {
@@ -189,6 +192,17 @@ export class SwitchBotMatterPlatform {
     for (const { created, d, type, useMatter, matterAvailable } of createdDevices) {
       // Only register accessories where Matter is enabled and supported
       if (!useMatter) {
+        const uuid = matterApi.uuid.generate(`${d.id}`)
+        const staleAccessory = this.accessories.get(uuid)
+        if (staleAccessory && this.api && (this.api as any).matter?.unregisterPlatformAccessories) {
+          try {
+            ;(this.api as any).matter.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [staleAccessory])
+            this.accessories.delete(uuid)
+            this.log.info(`Unregistered Matter accessory ${d.id} (${type}) because Matter is disabled for this device`)
+          } catch (e) {
+            this.log.warn(`Failed to unregister disabled Matter accessory ${d.id} (${type})`, e)
+          }
+        }
         // Log reason for skipping registration
         if (!matterAvailable) {
           this.log.info(`Skipping Matter registration for ${d.id} (${type}) - Matter API not available on this bridge`)
@@ -312,6 +326,7 @@ export class SwitchBotMatterPlatform {
       id: d.deviceId ?? d.id,
       type: d.configDeviceType ?? d.type,
       name: d.configDeviceName ?? d.name,
+      exposeMatter: d.exposeMatter,
     })))
   }
 
